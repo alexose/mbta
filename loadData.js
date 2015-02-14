@@ -14,21 +14,34 @@ module.exports = function(options, callback){
 
     var data = JSON.parse(json);
 
-    // Extract all subway lines
-    /*
-    routes = data.mode
-      .filter(function(d){ return d.mode_name === 'Subway'});
-    */
+    var routes = _.chain(data.mode)
+      .filter({ mode_name : 'Subway' })
+      .pluck('route')
+      .flatten()
+      .value();
 
-    routes = _.flatten(data.mode, true);
+    // Grab stops per route
+    (function stops(index){
+      var route = routes[index];
 
-    routes = JSON.stringify(routes);
-    console.log(routes);
-    callback(routes);
+      if (route){
+
+        var id = route.route_id;
+
+        log.info('Loading subway stops... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
+
+        fetch('stopsbyroute', { route : id }, function(json){
+          route.stops = JSON.parse(json);
+          setTimeout(stops.bind(this, index + 1), 1000);
+        });
+      } else {
+
+        // TODO: grab all trains and their locations
+        // Done!
+        callback(JSON.stringify(routes));
+      }
+    })(0);
   });
-
-
-
 };
 
 function get(options, endpoint, params, callback){

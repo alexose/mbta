@@ -4,7 +4,7 @@ var http = require('http')
   , fs   = require('fs');
 
 log.enableColor();
-log.level = 'warn';
+log.level = 'verbose';
 
 var options;
 try {
