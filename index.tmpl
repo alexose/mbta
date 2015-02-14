@@ -17,30 +17,42 @@ var data = {{data}};
 
 var svg = d3.selectAll('svg');
 
-// Get all stops from our deeply-nested json
-var stops = [];
+// Denormalize all stops from our deeply-nested json
+var stops = [],
+  segments = [];
+
 data.forEach(function(route){
   route.stops.direction.forEach(function(direction){
-    direction.stop.forEach(function(stop){
+    direction.stop.forEach(function(stop, i){
+
       stops.push(_.assign(stop, {
         route_name : route.route_name,
         direction_name : direction.direction_name
       }));
+
+      var next = direction.stop[i + 1];
+      if (next){
+        segments.push({
+          start : stop,
+          end : next
+        });
+      }
+
     });
   });
 });
 
+// Map colors
 var colors = {
   'Green Line':  'green',
   'Red Line':    'red',
   'Orange Line': 'orange',
-  'Blue Line':   'blue'
+  'Blue Line':   'blue',
+  'Mattapan Trolley': 'red'
 };
 
-var x = d3.scale.linear().domain([42.26, 42.46]).range([0, 100]),
+var x = d3.scale.linear().domain([42.46, 42.26]).range([0, 100]),
   y = d3.scale.linear().domain([-71.2, -71]).range([0, 100]);
-
-console.log(stops);
 
 svg
   .selectAll('circle')
@@ -51,6 +63,17 @@ svg
       .attr('cx', function(d){ return y(d.stop_lon); })
       .attr('r', 1)
       .style('fill', function(d){ return colors[d.route_name]; });
+
+svg
+  .selectAll('line')
+  .data(segments)
+  .enter()
+    .append('line')
+      .attr('y1', function(d){ return x(d.start.stop_lat); })
+      .attr('x1', function(d){ return y(d.start.stop_lon); })
+      .attr('y2', function(d){ return x(d.end.stop_lat); })
+      .attr('x2', function(d){ return y(d.end.stop_lon); })
+      .style('stroke', function(d){ return colors[d.start.route_name]; });
 
   </script>
 </body>
