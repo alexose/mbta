@@ -1,11 +1,10 @@
 // MBTA viz
 var http = require('http')
   , log  = require('npmlog')
-  , fs   = require('fs')
-  , qs   = require('querystring');
+  , fs   = require('fs');
 
 log.enableColor();
-log.level = "verbose";
+log.level = 'warn';
 
 var options;
 try {
@@ -15,46 +14,49 @@ try {
   process.exit();
 }
 
-// Get stops data
-var host = 'realtime.mbta.com'
-  , path = '/developer/api/v2/'
-  , stops = 'stopsbylocation/';
+// Serve static files
+var static = require('node-static');
+var file = new static.Server('./client');
 
-var params = {
-  api_key: options.api_key,
-  lat:     42.346961,
-  lon:     -71.076640,
-  format:  'json'
-};
-
-var settings = {
-  host : host,
-  path : path + stops + '?' + qs.encode(params)
-}
-
-console.log(settings);
-
-// Recieve data and begin listening
-http.get(settings, function(response){
-
-  var str = '';
-
-  response.on('data', function (chunk) {
-    str += chunk;
-  });
-
-  response.on('end', function () {
-    init(str);
-  });
-});
+// Get data
+require('./loadData.js')(options, listen);
 
 // Set up HTTP server
-function init(data){
+function listen(data){
 
   http
     .createServer(function(request, response){
-		main(request, response, data);
-	})
+
+      // Route requests to static files
+      if (request.url === '/'){
+
+        // Serve main template
+        fs.readFile('index.tmpl', 'utf8', function(err, tmpl){
+
+          // Embed important data on load
+          var html = tmpl
+            .replace('{{data}}', data)
+            .replace('{{port}}', options.port);
+
+          respond(response, html, null, 'text/html');
+        });
+
+      } else if (request.url.indexOf('/client') === 0){
+
+        // Strip /client prefect
+        request.url = request.url.replace('/client', '');
+
+        // Serve static files
+        file.serve(request, response, function (err, result) {
+          if (err) {
+            log.warn("Error serving " + request.url + " - " + err.message);
+            response.writeHead(err.status, err.headers);
+            response.end();
+          }
+        });
+      }
+
+    })
     .listen(options.port, function(){
       log.info('Server running on port ' + options.port);
     });
@@ -63,15 +65,6 @@ function init(data){
 // Serve markup
 function main(request, response, data){
 
-  fs.readFile('index.tmpl', 'utf8', function(err, tmpl){
-
-    // Embed important data on load
-    var html = tmpl
-      .replace('{{data}}', data)
-      .replace('{{port}}', options.port);
-
-    respond(response, html, null, 'text/html');
-  });
 }
 
 // Set up websocket
