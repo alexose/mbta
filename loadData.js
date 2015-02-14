@@ -1,10 +1,25 @@
 var http = require('http')
   , qs = require('querystring')
   , _ = require('lodash')
-  , log = require('npmlog');
+  , log = require('npmlog')
+  , fs = require('fs');
 
 // Query everything we need to build the graph and begin doing realtime updates
 module.exports = function(options, callback){
+
+  // Try serving cached data first
+  fs.readFile('cache.json', 'utf8', function(err, json){
+    if (!err){
+      log.info('Loading cached subway data.');
+      callback(json);
+    } else {
+      load(options, callback);
+    }
+  });
+
+}
+
+function load(options, callback){
 
   var fetch = get.bind(this, options)
     , routes = {};
@@ -38,7 +53,9 @@ module.exports = function(options, callback){
 
         // TODO: grab all trains and their locations
         // Done!
-        callback(JSON.stringify(routes));
+        var string = JSON.stringify(routes);
+        save(string);
+        callback(string);
       }
     })(0);
   });
@@ -72,4 +89,14 @@ function get(options, endpoint, params, callback){
     });
   });
 
+};
+
+function save(routes){
+  fs.writeFile('cache.json', routes, function(err) {
+    if(err) {
+      console.log(err);
+    } else {
+      console.log("The file was saved!");
+    }
+  });
 }

@@ -7,13 +7,51 @@
 </head>
 <body>
   <h1>MBTAVIZOMG</h1>
-  <svg></svg>
+  <svg width="600" height="400" viewBox="0 0 100 100"></svg>
   <!-- bower:js -->
   <script src="client/bower_components/d3/d3.js"></script>
   <script src="client/bower_components/lodash/lodash.js"></script>
   <!-- endbower -->
   <script>
-    var data = {{data}};
+var data = {{data}};
+
+var svg = d3.selectAll('svg');
+
+// Get all stops from our deeply-nested json
+var stops = [];
+data.forEach(function(route){
+  route.stops.direction.forEach(function(direction){
+    direction.stop.forEach(function(stop){
+      stops.push(_.assign(stop, {
+        route_name : route.route_name,
+        direction_name : direction.direction_name
+      }));
+    });
+  });
+});
+
+var colors = {
+  'Green Line':  'green',
+  'Red Line':    'red',
+  'Orange Line': 'orange',
+  'Blue Line':   'blue'
+};
+
+var x = d3.scale.linear().domain([42.26, 42.46]).range([0, 100]),
+  y = d3.scale.linear().domain([-71.2, -71]).range([0, 100]);
+
+console.log(stops);
+
+svg
+  .selectAll('circle')
+  .data(stops)
+  .enter()
+    .append('circle')
+      .attr('cy', function(d){ return x(d.stop_lat); })
+      .attr('cx', function(d){ return y(d.stop_lon); })
+      .attr('r', 1)
+      .style('fill', function(d){ return colors[d.route_name]; });
+
   </script>
 </body>
 </html>
