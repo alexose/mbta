@@ -16,7 +16,6 @@ module.exports = function(options, callback){
       load(options, callback);
     }
   });
-
 }
 
 function load(options, callback){
@@ -35,7 +34,7 @@ function load(options, callback){
       .flatten()
       .value();
 
-    // Grab stops per route
+    // Grab stops, schedules, and predictions per route
     (function stops(index){
       var route = routes[index];
 
@@ -45,10 +44,31 @@ function load(options, callback){
 
         log.info('Loading subway stops... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
 
+        // Get stops
         fetch('stopsbyroute', { route : id }, function(json){
-          route.stops = JSON.parse(json);
-          setTimeout(stops.bind(this, index + 1), 1000);
+          route.stops = parse(json, 'stops', id);
+          check();
         });
+
+        // Get predictions
+        fetch('predictionsbyroute', { route : id }, function(json){
+          route.predictions = parse(json, 'prediction', id);
+          check();
+        });
+
+        // Get schedules
+        fetch('schedulebyroute', { route : id }, function(json){
+          route.schedule = parse(json, 'schedules', id);
+          check();
+        });
+
+        // If we have everything, let's proceed to the next route
+        function check(){
+          if (route.stops && route.predictions && route.schedule){
+            setTimeout(stops.bind(this, index + 1), 1000);
+          }
+        }
+
       } else {
 
         // TODO: grab all trains and their locations
@@ -68,8 +88,6 @@ function get(options, endpoint, params, callback){
       format:  'json'
     }, params);
 
-  console.log(params);
-
   var settings = {
     host : options.host,
     path : options.path + endpoint + '?' + qs.encode(params)
@@ -80,16 +98,27 @@ function get(options, endpoint, params, callback){
 
     var str = '';
 
-    response.on('data', function (chunk) {
+    response.on('data', function(chunk){
       str += chunk;
     });
 
-    response.on('end', function () {
+    response.on('end', function(){
       callback(str);
     });
   });
 
 };
+
+// Parse JSON into an object
+function parse(json, item, id){
+
+  try {
+    return JSON.parse(json);
+  } catch(e){
+    log.warn('No ' + item + ' for route ' + id);
+    return {};
+  }
+}
 
 function save(routes){
   fs.writeFile('cache.json', routes, function(err) {
