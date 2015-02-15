@@ -15,8 +15,7 @@
   <script>
 var data = {{data}};
 
-var svg = d3.selectAll('svg'),
-  stops = data.stops;
+var svg = d3.selectAll('svg');
 
 // Map colors
 var colors = {
@@ -27,28 +26,26 @@ var colors = {
   'Mattapan Trolley': 'red'
 };
 
-var coords = 'spider';
+function makeExtent(){
+  var arr = _.chain(data.stops)
+    .pluck(coords)
+    .value();
 
-var extent = (function(){
-    var arr = _.chain(stops)
-      .pluck(coords)
-      .value();
+  var x = _.chain(arr).pluck(0).value(),
+    y = _.chain(arr).pluck(1).value();
 
-    var x = _.chain(arr).pluck(0).value(),
-      y = _.chain(arr).pluck(1).value();
+  // TODO: aspect ratio
+  return [
+      [_.min(x), _.max(x)],
+      [_.min(y), _.max(y)]
+    ];
+};
 
-    // TODO: aspect ratio
-     return [
-        [_.min(x), _.max(x)],
-        [_.min(y), _.max(y)]
-     ];
-  })();
-
-console.log(extent);
-
-var scale = {
-  x : d3.scale.linear().domain(extent[0]).range([0, 100]),
-  y : d3.scale.linear().domain(extent[1]).range([0, 100])
+function makeScale(){
+  return {
+    x : d3.scale.linear().domain(extent[0]).range([0, 100]),
+    y : d3.scale.linear().domain(extent[1]).range([0, 100])
+  }
 }
 
 function getX(stop){
@@ -65,27 +62,85 @@ function mouseover(stop){
   console.log(stop.parent_station_name, stop);
 }
 
-svg
-  .selectAll('circle')
-  .data(_.values(stops))
-  .enter()
-    .append('circle')
-      .attr('cy', getY)
-      .attr('cx', getX)
-      .attr('r', 1)
-      .style('fill', function(d){ return colors[d.route_name]; })
-      .on('mouseover', mouseover);
+var coords, extent, scale, initialized;
 
-svg
-  .selectAll('line')
-  .data(data.segments)
-  .enter()
-    .append('line')
-      .attr('y1', function(d){ return getY(stops[d.start]); })
-      .attr('x1', function(d){ return getX(stops[d.start]); })
-      .attr('y2', function(d){ return getY(stops[d.end]); })
-      .attr('x2', function(d){ return getX(stops[d.end]); })
-      .style('stroke', function(d){ return colors[stops[d.start].route_name]; });
+init();
+function init(){
+  coords = coords === 'spider' ? 'geo' : 'spider';
+  extent = makeExtent();
+  scale = makeScale();
+
+  // Processs coordinates
+  var stops = _.values(data.stops),
+    segments = data.segments;
+
+  stops.forEach(function(d){
+    d.x = scale.x(d[coords][0]);
+    d.y = scale.y(d[coords][1]);
+  });
+
+  segments.forEach(function(d){
+    var start = data.stops[d.start],
+      end = data.stops[d.end];
+
+    d.x1 = start.x;
+    d.y1 = start.y;
+    d.x2 = end.x;
+    d.y2 = end.y;
+
+    d.color = colors[start.route_name];
+  });
+
+  if (initialized){
+    update(stops, segments);
+  } else {
+    draw(stops, segments);
+  }
+  initialized = true;
+}
+
+
+function draw(stops, segments){
+
+  var circles = svg.selectAll('circle'),
+      lines = svg.selectAll('line');
+
+  circles
+    .data(stops)
+    .enter()
+      .append('circle')
+        .on('mouseover', mouseover)
+        .style('fill', function(d){ return colors[d.route_name]; });
+
+  lines
+    .data(segments)
+    .enter()
+      .append('line')
+        .style('stroke', function(d){ return d.color; });
+
+   update(stops, segments, 0);
+}
+
+function update(stops, segments, time){
+
+  time = time || 1000;
+
+  var circles = svg.selectAll('circle'),
+      lines = svg.selectAll('line');
+
+  circles
+    .transition().duration(time)
+      .attr('cy', function(d){ return d.y })
+      .attr('cx', function(d){ return d.x })
+      .attr('r', 1);
+
+  lines
+    .transition().duration(time)
+      .attr('y1', function(d){ return d.y1; })
+      .attr('x1', function(d){ return d.x1; })
+      .attr('y2', function(d){ return d.y2; })
+      .attr('x2', function(d){ return d.x2; });
+}
 
 // Set up web socket
 var ws = new WebSocket('{{socket}}');
