@@ -94,11 +94,12 @@ function segment(data){
 
         // Metadata
         obj.parent_station_name = stop.parent_station_name;
+        obj.parent_station = stop.parent_station;
 
         // Move geo coords
         obj.geo = [
-          stop.stop_lat,
-          stop.stop_lon
+          stop.stop_lon,
+          stop.stop_lat
         ];
 
         stops[stop.stop_id] = obj;

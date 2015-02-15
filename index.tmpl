@@ -20,34 +20,45 @@ var svg = d3.selectAll('svg'),
 
 // Map colors
 var colors = {
-  'Green Line':  'green',
-  'Red Line':    'red',
-  'Orange Line': 'orange',
-  'Blue Line':   'blue',
+  'Green Line':       'green',
+  'Red Line':         'red',
+  'Orange Line':      'orange',
+  'Blue Line':        'blue',
   'Mattapan Trolley': 'red'
 };
 
 var coords = 'spider';
 
-var scales = {
-  geo : {
-    x : d3.scale.linear().domain([42.44, 42.25]).range([0, 100]),
-    y : d3.scale.linear().domain([-71.21, -71.02]).range([0, 100])
-  },
-  spider : {
-    x : d3.scale.linear().domain([0, 20]).range([0, 100]),
-    y : d3.scale.linear().domain([0, 20]).range([0, 100])
-  }
+var extent = (function(){
+    var arr = _.chain(stops)
+      .pluck(coords)
+      .value();
+
+    var x = _.chain(arr).pluck(0).value(),
+      y = _.chain(arr).pluck(1).value();
+
+    // TODO: aspect ratio
+     return [
+        [_.min(x), _.max(x)],
+        [_.min(y), _.max(y)]
+     ];
+  })();
+
+console.log(extent);
+
+var scale = {
+  x : d3.scale.linear().domain(extent[0]).range([0, 100]),
+  y : d3.scale.linear().domain(extent[1]).range([0, 100])
 }
 
 function getX(stop){
   var coord = stop[coords] ? stop[coords][0] : 0;
-  return scales[coords].x(coord);
+  return scale.x(coord);
 }
 
 function getY(stop){
   var coord = stop[coords] ? stop[coords][1] : 0;
-  return scales[coords].y(coord);
+  return scale.y(coord);
 }
 
 function mouseover(stop){

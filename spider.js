@@ -53,8 +53,7 @@ module.exports = {
   "place-mlmnl": [8.485281374,  1],
   "place-ogmnl": [8.485281374,  0],
 
-  // Strange green line coords go here
-  // TODO: fix
+  // Green line
   "place-lech":  [7.071067814,  3.585786438],
   "place-spmnl": [7.778174594,  4.292893219],
   "place-north": [8.485281374,  5],
@@ -120,5 +119,21 @@ module.exports = {
   "place-chswk": [-9.121320344, 5.292893219],
   "place-chill": [-9.828427125, 6],
   "place-sougr": [-10.53553391, 6.707106781],
-  "place-lake":  [-11.53553391, 6.707106781]
+  "place-lake":  [-11.53553391, 6.707106781],
+
+  // Mattapan
+  "place-asmnl": [7.071067812,  14.82842712],
+  "place-cedgr": [7.071067812,  15.82842712],
+  "place-butlr": [6.071067812,  15.82842712],
+  "place-miltt": [5.071067812,  15.82842712],
+  "place-cenav": [4.071067812,  15.82842712],
+  "place-valrd": [3.071067812,  15.82842712],
+  "place-capst": [2.071067812,  15.82842712],
+  "place-matt":  [1.071067812,  15.82842712],
+
+  // Assembly overrides
+  "place-astao": [8.485281374,  2],
+  "place-welln": [8.485281374,  1],
+  "place-mlmnl": [8.485281374,  0],
+  "place-ogmnl": [8.485281374, -1],
 };
