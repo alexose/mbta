@@ -53,7 +53,7 @@ function load(events, callback){
         // Get stops
         get('stopsbyroute', { route : id }, function(json){
           route.stops = parse(json, 'stops', id);
-          setTimeout(stops.bind(this, index + 1), 1000 * 10);
+          setTimeout(stops.bind(this, index + 1), 1000);
         });
 
       } else {
@@ -76,19 +76,32 @@ function load(events, callback){
 function segment(data){
 
   var segments = []
-    , stops = {};
+    , stops = {}
+    , spider = require('./spider.js');
 
   data.forEach(function(route){
     route.stops.direction.forEach(function(direction){
       direction.stop.forEach(function(stop, i){
 
+        var obj = {};
+
         // Denormalize route data
-        stop.route_id = route.route_id;
-        stop.route_name = route.route_name;
+        obj.route_id = route.route_id;
+        obj.route_name = route.route_name;
 
-        stops[stop.stop_id] = stop;
+        // Provide simplified coordinates
+        obj.spider = spider[stop.parent_station];
 
-        // TODO: Provide "simplified" stop coordinates
+        // Metadata
+        obj.parent_station_name = stop.parent_station_name;
+
+        // Move geo coords
+        obj.geo = [
+          stop.stop_lat,
+          stop.stop_lon
+        ];
+
+        stops[stop.stop_id] = obj;
 
         var next = direction.stop[i + 1];
         if (next){
@@ -196,7 +209,6 @@ function validate(json){
     return false;
   }
 }
-
 
 function save(routes){
   fs.writeFile('cache.json', routes, function(err) {

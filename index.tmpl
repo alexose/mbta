@@ -27,28 +27,53 @@ var colors = {
   'Mattapan Trolley': 'red'
 };
 
-var x = d3.scale.linear().domain([42.44, 42.25]).range([0, 100]),
-  y = d3.scale.linear().domain([-71.21, -71.02]).range([0, 100]);
+var coords = 'spider';
+
+var scales = {
+  geo : {
+    x : d3.scale.linear().domain([42.44, 42.25]).range([0, 100]),
+    y : d3.scale.linear().domain([-71.21, -71.02]).range([0, 100])
+  },
+  spider : {
+    x : d3.scale.linear().domain([0, 20]).range([0, 100]),
+    y : d3.scale.linear().domain([0, 20]).range([0, 100])
+  }
+}
+
+function getX(stop){
+  var coord = stop[coords] ? stop[coords][0] : 0;
+  return scales[coords].x(coord);
+}
+
+function getY(stop){
+  var coord = stop[coords] ? stop[coords][1] : 0;
+  return scales[coords].y(coord);
+}
+
+function mouseover(stop){
+  console.log(stop.parent_station_name, stop);
+}
 
 svg
   .selectAll('circle')
   .data(_.values(stops))
   .enter()
     .append('circle')
-      .attr('cy', function(d){ return x(d.stop_lat); })
-      .attr('cx', function(d){ return y(d.stop_lon); })
+      .attr('cy', getY)
+      .attr('cx', getX)
       .attr('r', 1)
-      .style('fill', function(d){ return colors[d.route_name]; });
+      .style('fill', function(d){ return colors[d.route_name]; })
+      .on('mouseover', mouseover);
 
 svg
   .selectAll('line')
   .data(data.segments)
   .enter()
     .append('line')
-      .attr('y1', function(d){ return x(stops[d.start].stop_lat); })
-      .attr('x1', function(d){ return y(stops[d.start].stop_lon); })
-      .attr('y2', function(d){ return x(stops[d.end].stop_lat); })
-      .attr('x2', function(d){ return y(stops[d.end].stop_lon); })
+      .attr('y1', function(d){ return getY(stops[d.start]); })
+      .attr('x1', function(d){ return getX(stops[d.start]); })
+      .attr('y2', function(d){ return getY(stops[d.end]); })
+      .attr('x2', function(d){ return getX(stops[d.end]); })
       .style('stroke', function(d){ return colors[stops[d.start].route_name]; });
 
 // Set up web socket
