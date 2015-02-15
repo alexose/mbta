@@ -71,8 +71,7 @@ function load(options, callback){
 
       } else {
 
-        // TODO: grab all trains and their locations
-        // Done!
+        routes = denormalize(routes);
         var string = JSON.stringify(routes);
         save(string);
         callback(string);
@@ -80,6 +79,42 @@ function load(options, callback){
     })(0);
   });
 };
+
+// Produce a list of stops from our deeply-nested json
+function denormalize(data){
+
+  var stops = []
+    , segments = []
+    , predictions = []
+    , schedule = [];
+
+  data.forEach(function(route){
+    route.stops.direction.forEach(function(direction){
+      direction.stop.forEach(function(stop, i){
+
+        stops.push(_.assign(stop, {
+          route_name : route.route_name,
+          direction_name : direction.direction_name
+        }));
+
+        var next = direction.stop[i + 1];
+        if (next){
+          segments.push({
+            start : stop,
+            end : next
+          });
+        }
+
+      });
+    });
+  });
+
+  return {
+    stops : stops,
+    segments : segments
+  };
+
+}
 
 function get(options, endpoint, params, callback){
 
