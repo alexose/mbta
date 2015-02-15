@@ -1,7 +1,8 @@
 // MBTA viz
 var http = require('http')
   , log  = require('npmlog')
-  , fs   = require('fs');
+  , fs   = require('fs')
+  , events = new (require('events').EventEmitter)();
 
 log.enableColor();
 log.level = 'verbose';
@@ -19,7 +20,7 @@ var static = require('node-static');
 var file = new static.Server('./client');
 
 // Get data
-require('./loadData.js')(options, listen);
+require('./loadData.js')(options, events, listen);
 
 // Set up HTTP server
 function listen(data){
@@ -36,6 +37,7 @@ function listen(data){
           // Embed important data on load
           var html = tmpl
             .replace('{{data}}', data)
+            .replace('{{socket}}', 'ws://localhost:' + options.socket)
             .replace('{{port}}', options.port);
 
           respond(response, html, null, 'text/html');
@@ -62,20 +64,22 @@ function listen(data){
     });
 }
 
-// Serve markup
-function main(request, response, data){
-
-}
-
 // Set up websocket
 var WebSocketServer = require('ws').Server
   , wss = new WebSocketServer({ port: options.socket });
 
 wss.on('connection', function connection(ws) {
-  ws.on('message', function incoming(message) {
+
+  log.verbose('Websocket client connected.');
+
+  events.on('predictionsbyroute', function(json){
+    ws.send(json);
   });
 
-  ws.send('connected');
+  events.on('schedulebyroute', function(json){
+    ws.send(json);
+  });
+
 });
 
 
@@ -83,8 +87,6 @@ function respond(response, string, code, type){
 
   code = code || 200;
   type = type || "text/plain";
-
-  log.verbose(code + ': ' + string);
 
   response.writeHead(code, {
     "Content-Type": type,

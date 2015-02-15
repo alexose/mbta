@@ -4,27 +4,33 @@ var http = require('http')
   , log = require('npmlog')
   , fs = require('fs');
 
+var options;
+
 // Query everything we need to build the graph and begin doing realtime updates
-module.exports = function(options, callback){
+module.exports = function(_options, events, callback){
+
+  options = _options;
 
   // Try serving cached data first
   fs.readFile('cache.json', 'utf8', function(err, json){
     if (!err){
       log.info('Loading cached subway data.');
       callback(json);
+
+      var data = JSON.parse(json);
+      setTimeout(poll.bind(this, data.routes, events), 1000 * 60 * 2);
     } else {
-      load(options, callback);
+      load(events, callback);
     }
   });
 }
 
-function load(options, callback){
+function load(events, callback){
 
-  var fetch = get.bind(this, options)
-    , routes = {};
+  var routes = {};
 
   // Grab all routes
-  fetch('routes/', {}, function(json){
+  get('routes/', {}, function(json){
 
     var data = JSON.parse(json);
 
@@ -42,37 +48,23 @@ function load(options, callback){
 
         var id = route.route_id;
 
-        log.info('Loading subway stops... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
+        log.info('Loading subway routes... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
 
         // Get stops
-        fetch('stopsbyroute', { route : id }, function(json){
+        get('stopsbyroute', { route : id }, function(json){
           route.stops = parse(json, 'stops', id);
-          check();
+          setTimeout(stops.bind(this, index + 1), 1000 * 10);
         });
-
-        // Get predictions
-        fetch('predictionsbyroute', { route : id }, function(json){
-          route.predictions = parse(json, 'prediction', id);
-          check();
-        });
-
-        // Get schedules
-        fetch('schedulebyroute', { route : id }, function(json){
-          route.schedule = parse(json, 'schedules', id);
-          check();
-        });
-
-        // If we have everything, let's proceed to the next route
-        function check(){
-          if (route.stops && route.predictions && route.schedule){
-            setTimeout(stops.bind(this, index + 1), 1000);
-          }
-        }
 
       } else {
 
-        routes = denormalize(routes);
-        var string = JSON.stringify(routes);
+        // Begin polling schedule and prediction data
+        poll(routes, events);
+
+        // Process main payload and save it
+        var obj = segment(routes)
+          , string = JSON.stringify(obj);
+
         save(string);
         callback(string);
       }
@@ -80,43 +72,83 @@ function load(options, callback){
   });
 };
 
-// Produce a list of stops from our deeply-nested json
-function denormalize(data){
+// Produce a list of segments with which to draw the map
+function segment(data){
 
-  var stops = []
-    , segments = []
-    , predictions = []
-    , schedule = [];
+  var segments = []
+    , stops = {};
 
   data.forEach(function(route){
     route.stops.direction.forEach(function(direction){
       direction.stop.forEach(function(stop, i){
 
-        stops.push(_.assign(stop, {
-          route_name : route.route_name,
-          direction_name : direction.direction_name
-        }));
+        // Denormalize route data
+        stop.route_id = route.route_id;
+        stop.route_name = route.route_name;
+
+        stops[stop.stop_id] = stop;
+
+        // TODO: Provide "simplified" stop coordinates
 
         var next = direction.stop[i + 1];
         if (next){
           segments.push({
-            start : stop,
-            end : next
+            start : stop.stop_id,
+            end : next.stop_id
           });
         }
-
       });
     });
   });
 
   return {
+    segments : segments,
     stops : stops,
-    segments : segments
+    routes : data
   };
+}
+
+// Get prediction updates by route.  These should update every minute
+function poll(routes, events){
+
+  function update(endpoint, index, callback){
+
+    var route = routes[index];
+    if (route){
+
+      var id = route.route_id;
+      get(endpoint, { route : id }, function(json){
+
+        if (validate(json)){
+          events.emit(endpoint, json);
+          log.info('Updating ' + endpoint + ' for route ' + id);
+          setTimeout(update.bind(this, endpoint, index + 1, callback), 1000);
+        } else {
+          log.warn('No info for ' + endpoint + ' for route ' + id);
+        }
+      });
+    } else {
+      callback();
+    }
+  }
+
+  // Get predictions
+  (function predictions(){
+    update('predictionsbyroute', 0, function(){
+      setTimeout(predictions, 1000 * 60);
+   });
+  })();
+
+  // Get schedules
+  (function schedule(){
+    update('schedulebyroute', 0, function(){
+      setTimeout(schedule, 1000 * 60 * 20);
+    });
+  })();
 
 }
 
-function get(options, endpoint, params, callback){
+function get(endpoint, params, callback){
 
   params = _.assign({
       api_key: options.api_key,
@@ -154,6 +186,17 @@ function parse(json, item, id){
     return {};
   }
 }
+
+// Attempt to validate JSON
+function validate(json){
+  try {
+    JSON.parse(json);
+    return true;
+  } catch(e){
+    return false;
+  }
+}
+
 
 function save(routes){
   fs.writeFile('cache.json', routes, function(err) {

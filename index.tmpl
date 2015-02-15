@@ -15,7 +15,8 @@
   <script>
 var data = {{data}};
 
-var svg = d3.selectAll('svg');
+var svg = d3.selectAll('svg'),
+  stops = data.stops;
 
 // Map colors
 var colors = {
@@ -31,7 +32,7 @@ var x = d3.scale.linear().domain([42.44, 42.25]).range([0, 100]),
 
 svg
   .selectAll('circle')
-  .data(data.stops)
+  .data(_.values(stops))
   .enter()
     .append('circle')
       .attr('cy', function(d){ return x(d.stop_lat); })
@@ -44,11 +45,22 @@ svg
   .data(data.segments)
   .enter()
     .append('line')
-      .attr('y1', function(d){ return x(d.start.stop_lat); })
-      .attr('x1', function(d){ return y(d.start.stop_lon); })
-      .attr('y2', function(d){ return x(d.end.stop_lat); })
-      .attr('x2', function(d){ return y(d.end.stop_lon); })
-      .style('stroke', function(d){ return colors[d.start.route_name]; });
+      .attr('y1', function(d){ return x(stops[d.start].stop_lat); })
+      .attr('x1', function(d){ return y(stops[d.start].stop_lon); })
+      .attr('y2', function(d){ return x(stops[d.end].stop_lat); })
+      .attr('x2', function(d){ return y(stops[d.end].stop_lon); })
+      .style('stroke', function(d){ return colors[stops[d.start].route_name]; });
+
+// Set up web socket
+var ws = new WebSocket('{{socket}}');
+
+ws.onopen = function(){
+  console.log('Socket opened.');
+};
+
+ws.onemessage = function(message){
+  console.log(message);
+};
 
   </script>
 </body>
