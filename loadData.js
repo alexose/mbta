@@ -98,8 +98,8 @@ function segment(data){
 
         // Move geo coords
         obj.geo = [
-          stop.stop_lon,
-          stop.stop_lat
+          parseFloat(stop.stop_lon, 10),
+          parseFloat(stop.stop_lat, 10)
         ];
 
         stops[stop.stop_id] = obj;

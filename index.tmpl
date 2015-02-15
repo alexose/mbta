@@ -35,10 +35,16 @@ function makeExtent(){
     y = _.chain(arr).pluck(1).value();
 
   // TODO: aspect ratio
-  return [
+  var obj = [
       [_.min(x), _.max(x)],
       [_.min(y), _.max(y)]
     ];
+
+  if (coords == 'geo'){
+    obj[1].reverse();
+  }
+
+  return obj;
 };
 
 function makeScale(){
