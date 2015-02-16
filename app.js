@@ -72,13 +72,16 @@ wss.on('connection', function connection(ws) {
 
   log.verbose('Websocket client connected.');
 
-  events.on('predictionsbyroute', function(json){
-    ws.send(json);
-  });
+  events.on('predictionsbyroute', send);
+  events.on('schedulebyroute', send);
 
-  events.on('schedulebyroute', function(json){
-    ws.send(json);
-  });
+  function send(json){
+    try {
+      ws.send(json);
+    } catch(e){
+      log.warn('Tried to update websocket, but failed.');
+    }
+  }
 
 });
 
