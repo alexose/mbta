@@ -108,7 +108,8 @@ function segment(data){
         if (next){
           segments.push({
             start : stop.stop_id,
-            end : next.stop_id
+            end : next.stop_id,
+            direction : direction.direction_name
           });
         }
       });
