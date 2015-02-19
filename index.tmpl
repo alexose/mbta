@@ -17,6 +17,20 @@ var data = {{data}};
 
 var svg = d3.selectAll('svg');
 
+var stations = _.chain(data.stops)
+  .map(function(d){
+    var obj = {
+      incoming : [],
+      outgoing : []
+    }
+    return [ d.parent_station + d.route_name, obj ]
+  })
+  .zipObject()
+  .value()
+
+console.log(stations);
+
+
 // Map colors
 var colors = {
   'Green Line':       'rgb(51, 160, 44)',
@@ -54,26 +68,27 @@ function makeExtent(){
 
 // Create a graph of stations with to-and-from segments
 function makeGraph(){
-  data.segments.forEach(function(d){
-    var start = data.stops[d.start],
-      end = data.stops[d.end];
 
-    if (!start.outgoing){
-      start.outgoing = [];
-    }
-    if (!end.incoming){
-      end.incoming = [];
-    }
+  data.segments.forEach(function(d){
+    var stop = {
+        start : data.stops[d.start],
+        end : data.stops[d.end]
+      },
+      route = stop.start.route_name,
+      station = {
+        start : stations[stop.start.parent_station + route],
+        end : stations[stop.end.parent_station + route]
+      };
 
     d.segment = [
-      [start.x, start.y],
-      [end.x, end.y]
+      [stop.start.x, stop.start.y],
+      [stop.end.x, stop.end.y]
     ];
 
-    d.color = colors[start.route_name];
+    d.color = colors[stop.start.route_name];
 
-    start.outgoing.push(d);
-    end.incoming.push(d);
+    station.start.outgoing.push(d);
+    station.end.incoming.push(d);
   });
 }
 
@@ -303,16 +318,23 @@ function lineFunction(d) {
   var p4 = offsets[0];
   var first;
 
-  var start = data.stops[d.start],
-    end = data.stops[d.end];
+  var stop = {
+    start : data.stops[d.start],
+    end : data.stops[d.end]
+  };
 
-  first = closestClockwise(d, end.outgoing);
+  var station = {
+    start : stations[stop.start.parent_station + stop.start.route_name],
+    end : stations[stop.end.parent_station + stop.end.route_name],
+  };
+
+  first = closestClockwise(d, station.end.outgoing);
   if (first) {
     var outgoingPoints = offsetPoints(first);
     var newP3 = intersect(offsets, outgoingPoints);
     if (newP3) { p3 = newP3; }
   }
-  first = closestCounterClockwise(d, start.incoming);
+  first = closestCounterClockwise(d, station.start.incoming);
   if (first) {
     var incomingPoints = offsetPoints(first);
     var newP4 = intersect(offsets, incomingPoints);

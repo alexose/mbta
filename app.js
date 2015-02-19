@@ -7,7 +7,9 @@ var http = require('http')
 log.enableColor();
 log.level = 'verbose';
 
-var options;
+var options
+  , dir = 'bower_components';
+
 try {
   options = require('./config/config.js');
 } catch(e){
@@ -17,7 +19,7 @@ try {
 
 // Serve static files
 var static = require('node-static');
-var file = new static.Server('./bower-components');
+var file = new static.Server('./' + dir);
 
 // Get data
 require('./loadData.js')(options, events, listen);
@@ -43,10 +45,9 @@ function listen(data){
           respond(response, html, null, 'text/html');
         });
 
-      } else if (request.url.indexOf('/client') === 0){
+      } else if (request.url.indexOf('/' + dir) === 0){
 
-        // Strip /client prefect
-        request.url = request.url.replace('/client', '');
+        request.url = request.url.replace('/' + dir, '');
 
         // Serve static files
         file.serve(request, response, function (err, result) {
@@ -56,7 +57,9 @@ function listen(data){
             response.end();
           }
         });
-      }
+      } else {
+       respond(response, '', 404);
+	  }
 
     })
     .listen(options.port, function(){
