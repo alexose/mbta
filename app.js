@@ -17,7 +17,7 @@ try {
 
 // Serve static files
 var static = require('node-static');
-var file = new static.Server('./client');
+var file = new static.Server('./bower-components');
 
 // Get data
 require('./loadData.js')(options, events, listen);
@@ -65,6 +65,7 @@ function listen(data){
 }
 
 // Set up websocket
+/*
 var WebSocketServer = require('ws').Server
   , wss = new WebSocketServer({ port: options.socket });
 
@@ -82,8 +83,8 @@ wss.on('connection', function connection(ws) {
       log.warn('Tried to update websocket, but failed.');
     }
   }
-
 });
+*/
 
 
 function respond(response, string, code, type){
