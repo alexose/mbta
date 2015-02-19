@@ -1,5 +1,7 @@
 module.exports = {
   port : 8034,
   socket : 8035,
-  api_key : 'YOUR_API_KEY'
-};
+  api_key : 'YOUR_API_KEY',
+  host : 'realtime.mbta.com',
+  path : '/developer/api/v2/'
+}
