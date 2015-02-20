@@ -13,6 +13,32 @@
   <script src="bower_components/lodash/lodash.js"></script>
   <!-- endbower -->
   <script>
+
+/*! tiny Js Pub/Sub
+ * http://anasnakawa.com/
+ * Copyright (c) Anas Nakawa
+ * inspired by Ben Alman's tiny one <https://gist.github.com/cowboy/661855>
+ * MIT License
+ */
+(function( p ) {
+
+  var e = p.e = {};
+
+  p.publish = function( name, data ) {
+    ( e[ name ] = e[ name ] || new Event( name ) ).data = data;
+    dispatchEvent( e[ name ] );
+  };
+
+  p.subscribe = function( name, handler, context ) {
+    addEventListener( name, handler.bind( context ) );
+  };
+
+  p.unsubscribe = function( name, handler, context ) {
+    removeEventListener( name, handler.bind( context ) );
+  };
+
+})( this.pubsub = {} );
+
 var data = {{data}};
 
 var svg = d3.selectAll('svg');
@@ -27,9 +53,6 @@ var stations = _.chain(data.stops)
   })
   .zipObject()
   .value()
-
-console.log(stations);
-
 
 // Map colors
 var colors = {
@@ -122,16 +145,18 @@ function mouseover(stop){
 var coords, extent, scale, initialized;
 
 var dist = 1.4;
+
 init();
 function init(){
   coords = coords === 'spider' ? 'geo' : 'spider';
   extent = makeExtent();
   scale = makeScale();
 
-  // Processs coordinates
   var stops = _.values(data.stops),
-    segments = data.segments;
+    segments = data.segments,
+    vehicles = data.vehicles || [];
 
+  // Processs coordinates
   stops.forEach(function(d){
     d.x = scale.x(d[coords][0]);
     d.y = scale.y(d[coords][1]);
@@ -140,17 +165,18 @@ function init(){
   makeGraph();
 
   if (initialized){
-    update(stops, segments);
+    update(stops, segments, vehicles);
   } else {
-    draw(stops, segments);
+    draw(stops, segments, vehicles);
   }
   initialized = true;
 }
 
-function draw(stops, segments){
+function draw(stops, segments, vehicles){
 
   var circles = svg.selectAll('circle'),
-      lines = svg.selectAll('line');
+      lines = svg.selectAll('line'),
+      rects = svg.selectAll('rect');
 
   circles
     .data(stops)
@@ -167,15 +193,25 @@ function draw(stops, segments){
         .style('stroke', 'black')
         .style('stroke-width', 0.1);
 
-   update(stops, segments, 0);
+  rects
+    .data(vehicles)
+    .enter()
+      .append('rect')
+        .attr('width', 10)
+        .attr('height', 10)
+        .attr('x', function(d){ return d.x; })
+        .attr('y', function(d){ return d.y; })
+
+  update(stops, segments, vehicles, 0);
 }
 
-function update(stops, segments, time){
+function update(stops, segments, vehicles, time){
 
   time = time || 1000;
 
   var circles = svg.selectAll('circle'),
-      lines = svg.selectAll('path');
+      lines = svg.selectAll('line'),
+      rects = svg.selectAll('rect');
 
   circles
     .transition().duration(time)
@@ -186,6 +222,11 @@ function update(stops, segments, time){
   lines
     .transition().duration(time)
       .attr('d', lineFunction);
+
+  rects
+    .transition().duration(time)
+      .attr('x', function(d){ return d.x; })
+      .attr('y', function(d){ return d.y; })
 }
 
 // Set up web socket
@@ -195,11 +236,44 @@ ws.onopen = function(){
   console.log('Socket opened.');
 };
 
-ws.onemessage = function(message){
-  console.log(message);
+ws.onmessage = function(message){
+  var data = parse(message.data);
+  pubsub.publish(data.name, data.data);
 };
 
+pubsub.subscribe('vehiclesbyroute', function(e){
 
+  // Extract vehicles
+  var route = e.data,
+    vehicles = [];
+
+  // TODO: move to server side
+  route.direction.forEach(function(direction){
+    direction.trip.forEach(function(trip){
+      var vehicle = trip.vehicle,
+        obj = {
+          geo : {
+            x : vehicle.vehicle_lat,
+            y : vehicle.vehicle_lon,
+            bearing : vehicle.vehicle_bearing
+          },
+          id : vehicle.vehicle_id,
+          ts : vehicle.vehicle_timestamp,
+          trip : trip.trip_name
+        };
+
+      vehicles.push(obj);
+    });
+  });
+});
+
+function parse(json){
+  try{
+    return JSON.parse(json);
+  } catch(e){
+    console.log('Couldn\'t parse JSON via websocket.');
+  }
+}
 
 
 

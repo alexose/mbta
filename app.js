@@ -68,7 +68,6 @@ function listen(data){
 }
 
 // Set up websocket
-/*
 var WebSocketServer = require('ws').Server
   , wss = new WebSocketServer({ port: options.socket });
 
@@ -78,17 +77,17 @@ wss.on('connection', function connection(ws) {
 
   events.on('predictionsbyroute', send);
   events.on('schedulebyroute', send);
+  events.on('vehiclesbyroute', send);
 
   function send(json){
     try {
       ws.send(json);
     } catch(e){
-      log.warn('Tried to update websocket, but failed.');
+      log.warn('Tried to update websocket, but failed.  Closing socket');
+	  ws.terminate();
     }
   }
 });
-*/
-
 
 function respond(response, string, code, type){
 

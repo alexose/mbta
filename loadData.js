@@ -18,7 +18,7 @@ module.exports = function(_options, events, callback){
       callback(json);
 
       var data = JSON.parse(json);
-      setTimeout(poll.bind(this, data.routes, events), 1000 * 60 * 2);
+      setTimeout(poll.bind(this, data.routes, events), 1000);
     } else {
       load(events, callback);
     }
@@ -134,13 +134,22 @@ function poll(routes, events){
       var id = route.route_id;
       get(endpoint, { route : id }, function(json){
 
-        if (validate(json)){
-          events.emit(endpoint, json);
-          log.info('Updating ' + endpoint + ' for route ' + id);
-          setTimeout(update.bind(this, endpoint, index + 1, callback), 1000);
+    var obj = parse(json);
+
+        if (obj){
+
+          // TODO: prevent all of this unnecessary stringification
+          var payload = JSON.stringify({
+            name : endpoint,
+            data : obj
+          });
+
+          events.emit(endpoint, payload);
+          log.info('Updated ' + endpoint + ' for route ' + id);
         } else {
-          log.warn('No info for ' + endpoint + ' for route ' + id);
+          log.info('No info for ' + endpoint + ' for route ' + id);
         }
+        setTimeout(update.bind(this, endpoint, index + 1, callback), 1000);
       });
     } else {
       callback();
@@ -158,6 +167,13 @@ function poll(routes, events){
   (function schedule(){
     update('schedulebyroute', 0, function(){
       setTimeout(schedule, 1000 * 60 * 20);
+    });
+  })();
+
+  // Get vehicles
+  (function vehicles(){
+    update('vehiclesbyroute', 0, function(){
+      setTimeout(vehicles, 1000 * 20);
     });
   })();
 
@@ -196,17 +212,6 @@ function parse(json, item, id){
 
   try {
     return JSON.parse(json);
-  } catch(e){
-    log.warn('No ' + item + ' for route ' + id);
-    return {};
-  }
-}
-
-// Attempt to validate JSON
-function validate(json){
-  try {
-    JSON.parse(json);
-    return true;
   } catch(e){
     return false;
   }
