@@ -128,16 +128,6 @@ function makeScale(){
   }
 }
 
-function getX(stop){
-  var coord = stop[coords] ? stop[coords][0] : 0;
-  return scale.x(coord);
-}
-
-function getY(stop){
-  var coord = stop[coords] ? stop[coords][1] : 0;
-  return scale.y(coord);
-}
-
 function mouseover(stop){
   console.log(stop.parent_station_name, stop);
 }
@@ -146,15 +136,15 @@ var coords, extent, scale, initialized;
 
 var dist = 1.4;
 
+var stops = _.values(data.stops),
+  segments = data.segments,
+  vehicles = data.vehicles || [];
+
 init();
 function init(){
   coords = coords === 'spider' ? 'geo' : 'spider';
   extent = makeExtent();
   scale = makeScale();
-
-  var stops = _.values(data.stops),
-    segments = data.segments,
-    vehicles = data.vehicles || [];
 
   // Processs coordinates
   stops.forEach(function(d){
@@ -165,7 +155,7 @@ function init(){
   makeGraph();
 
   if (initialized){
-    update(stops, segments, vehicles);
+    update();
   } else {
     draw(stops, segments, vehicles);
   }
@@ -193,24 +183,15 @@ function draw(stops, segments, vehicles){
         .style('stroke', 'black')
         .style('stroke-width', 0.1);
 
-  rects
-    .data(vehicles)
-    .enter()
-      .append('rect')
-        .attr('width', 10)
-        .attr('height', 10)
-        .attr('x', function(d){ return d.x; })
-        .attr('y', function(d){ return d.y; })
-
-  update(stops, segments, vehicles, 0);
+  update(0);
 }
 
-function update(stops, segments, vehicles, time){
+function update(time){
 
   time = time || 1000;
 
   var circles = svg.selectAll('circle'),
-      lines = svg.selectAll('line'),
+      lines = svg.selectAll('path'),
       rects = svg.selectAll('rect');
 
   circles
@@ -224,9 +205,14 @@ function update(stops, segments, vehicles, time){
       .attr('d', lineFunction);
 
   rects
-    .transition().duration(time)
-      .attr('x', function(d){ return d.x; })
-      .attr('y', function(d){ return d.y; })
+    .data(vehicles)
+    .enter()
+      .append('rect')
+        .transition().duration(time)
+          .attr('width', 1)
+          .attr('height', 1)
+          .attr('x', function(d){ console.log(d); return d.x; })
+          .attr('y', function(d){ return d.y; });
 }
 
 // Set up web socket
@@ -243,28 +229,28 @@ ws.onmessage = function(message){
 
 pubsub.subscribe('vehiclesbyroute', function(e){
 
-  // Extract vehicles
-  var route = e.data,
-    vehicles = [];
+  // Merge vehicles with existing vehicles
+  // There's got to be a nice way to do this with lodash...
+  var index = _.indexBy(vehicles, 'id');
 
-  // TODO: move to server side
-  route.direction.forEach(function(direction){
-    direction.trip.forEach(function(trip){
-      var vehicle = trip.vehicle,
-        obj = {
-          geo : {
-            x : vehicle.vehicle_lat,
-            y : vehicle.vehicle_lon,
-            bearing : vehicle.vehicle_bearing
-          },
-          id : vehicle.vehicle_id,
-          ts : vehicle.vehicle_timestamp,
-          trip : trip.trip_name
-        };
+  e.data.forEach(function(vehicle){
+    
+    // Processs coordinates
+    vehicle.x = scale.x(vehicle[coords][0]);
+    vehicle.y = scale.y(vehicle[coords][1]);
 
-      vehicles.push(obj);
-    });
+    index[vehicle.id] = vehicle;
   });
+
+  // Clear vehicles array
+  vehicles.slice(0, vehicles.length);
+
+  var newArr = _.map(index);
+  for (var i in newArr){
+    vehicles.push(newArr[i]);
+  }
+
+  update();
 });
 
 function parse(json){

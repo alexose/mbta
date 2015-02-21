@@ -84,7 +84,10 @@ wss.on('connection', function connection(ws) {
       ws.send(json);
     } catch(e){
       log.warn('Tried to update websocket, but failed.  Closing socket');
-	  ws.terminate();
+      ws.terminate();
+      events.removeListener('predictionsbyroute', send);
+      events.removeListener('schedulebyroute', send);
+      events.removeListener('vehiclesbyroute', send);
     }
   }
 });
@@ -101,5 +104,3 @@ function respond(response, string, code, type){
   response.write(string + '\n');
   response.end();
 }
-
-
