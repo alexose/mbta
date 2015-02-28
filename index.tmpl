@@ -227,14 +227,14 @@ ws.onmessage = function(message){
   pubsub.publish(data.name, data.data);
 };
 
-pubsub.subscribe('vehiclesbyroute', function(e){
+pubsub.subscribe('vehicles', function(e){
 
   // Merge vehicles with existing vehicles
   // There's got to be a nice way to do this with lodash...
   var index = _.indexBy(vehicles, 'id');
 
   e.data.forEach(function(vehicle){
-    
+
     // Processs coordinates
     vehicle.x = scale.x(vehicle[coords][0]);
     vehicle.y = scale.y(vehicle[coords][1]);

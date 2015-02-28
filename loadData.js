@@ -2,7 +2,8 @@ var http = require('http')
   , qs = require('querystring')
   , _ = require('lodash')
   , log = require('npmlog')
-  , fs = require('fs');
+  , fs = require('fs')
+  , ProtoBuf = require('protobufjs');
 
 var options;
 
@@ -61,8 +62,8 @@ function load(events, callback){
         // Process main payload and save it
         var obj = segment(routes)
           , string = JSON.stringify(obj);
-        
-        // Begin polling schedule and prediction data
+
+        // Begin polling vehicle and schedule data
         poll(obj, events);
 
         save(string);
@@ -123,95 +124,136 @@ function segment(data){
   };
 }
 
-// Get prediction updates by route.  These should update every minute
 function poll(data, events){
 
-  var routes = data.routes
-    , routeIndex = _.indexBy(routes, 'route_id')
-    , stopIndex = data.stops;
+  update(data, events);
 
-  function update(endpoint, index, callback, decorator){
+  setInterval(function(){
+    update(data, events);
+  }, 1000 * 10);
+}
 
-    var route = routes[index];
-    if (route){
+// Get prediction updates and vehicle locations via protobuf.
+function update(data, events){
 
-      var id = route.route_id;
-      get(endpoint, { route : id }, function(json){
+  var builder = ProtoBuf.loadProtoFile('gtfs-realtime.proto')
+    , transit = builder.build('transit_realtime')
+    , index = {};
 
-        var obj = parse(json);
+  var feeds = [
+    { name : 'alerts',   url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/Alerts.pb' },
+    { name : 'trips',    url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/TripUpdates.pb' },
+    { name : 'vehicles', url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/VehiclePositions.pb' }
+  ];
 
-        if (obj){
+  // Update each feed
+  feeds.forEach(function(feed){
+    fetch(feed.url, function(entities){
 
-          if (typeof decorator=== 'function'){
-            obj = decorator(obj, routeIndex, stopIndex);
-          }
+      index[feed.name] = entities;
 
-          // TODO: prevent all of this unnecessary stringification
-          var payload = JSON.stringify({
-            name : endpoint,
-            data : obj
-          });
+      check();
 
-          events.emit(endpoint, payload);
-          log.info('Updated ' + endpoint + ' for route ' + id);
-        } else {
-          log.info('No info for ' + endpoint + ' for route ' + id);
-        }
-        setTimeout(update.bind(this, endpoint, index + 1, callback, decorator), 1000);
-      });
-    } else {
-      callback();
+    });
+  });
+
+  // Check to see if we're done, and then run the parser.
+  function check(){
+
+    var finished = true;
+    feeds.forEach(function(feed){
+      if (!index[feed.name]){
+        finished = false;
+      }
+    });
+
+    if (finished){
+      var vehicles = parseVehicles(index, data);
+
+      var json = JSON.stringify({
+          name : feed.name,
+          data : entities
+        });
+      events.emit(feed.name, json);
     }
   }
 
-  // Get predictions
-  (function predictions(){
-    update('predictionsbyroute', 0, function(){
-      setTimeout(predictions, 1000 * 60);
-   });
-  })();
+  function fetch(url, cb){
+    http.get(url, function(res){
 
-  // Get schedules
-  (function schedule(){
-    update('schedulebyroute', 0, function(){
-      setTimeout(schedule, 1000 * 60 * 20);
+      var data = [];
+
+      res.on("data", function(chunk) {
+        data.push(chunk);
+      });
+
+      res.on("end", function() {
+        data = Buffer.concat(data);
+
+        var msg = transit.FeedMessage.decode(data);
+
+        if (msg && msg.entity){
+          cb(msg.entity);
+        } else {
+          log.warn('Got .pb file, but there was no data...');
+        }
+      });
     });
-  })();
-
-  // Get vehicles
-  (function vehicles(){
-    update('vehiclesbyroute', 0, function(){
-      setTimeout(vehicles, 1000 * 20);
-    }, parseVehicles);
-  })();
+  }
 
 }
 
-// Extract vehicles from routes
-function parseVehicles(route, routes, stops){
 
-  var arr = [];
+// Determine spider map coords of vehicles.
+// This is a little tricky.
+function parseVehicles(index, data){
 
+  var arr = []
+    , routes = _.indexBy(data.routes, 'route_id');
+
+  index.vehicles.forEach(function(vehicle){
+
+    var v = vehicle.vehicle;
+
+    var obj = {
+      geo : {
+        x : v.position.latitude,
+        y : v.position.longitude,
+        bearing : v.position.bearing
+      },
+      id : v.vehicle.id,
+      ts : v.timestamp.low
+    };
+
+    if (v.vehicle.license_plate){
+      obj.plate = v.vehicle.license.plate;
+    }
+
+    var route = routes[v.trip.route_id];
+
+    if (route){
+      var stopArr = route
+        .stops
+        .direction[0] // TODO: this is wrong
+        .stop
+        .map(function(d){
+          return data.stops[d.stop_id];
+        });
+
+      var latlon = [obj.geo.x, obj.geo.y];
+      obj.spider = interpolate(latlon, stopArr);
+    }
+
+
+    arr.push(obj);
+  });
+
+
+  /*
   route.direction.forEach(function(direction, i){
     direction.trip.forEach(function(trip){
       var vehicle = trip.vehicle,
-        obj = {
-          geo : {
-            x : parseFloat(vehicle.vehicle_lat, 10),
-            y : parseFloat(vehicle.vehicle_lon, 10),
-            bearing : parseFloat(vehicle.vehicle_bearing, 10)
-          },
-          id : vehicle.vehicle_id,
-          ts : vehicle.vehicle_timestamp
-        };
 
-      var stopArr = routes[route.route_id]
-          .stops
-          .direction[i]
-          .stop 
-          .map(function(d){
-            return stops[d.stop_id];
-          });
 
         latlon = [
           parseFloat(obj.geo.x, 10),
@@ -223,6 +265,7 @@ function parseVehicles(route, routes, stops){
       arr.push(obj);
     });
   });
+  */
 
   return arr;
 }
@@ -234,7 +277,7 @@ function interpolate(latlon, stops){
   var segment = closest(latlon, stops)
     , ratio = segment.start.distance / (segment.end.distance + segment.start.distance);
 
-  // Based on the distance ratio, let's find how far we are between the 
+  // Based on the distance ratio, let's find how far we are between the
   // segment that connects start and end
   var x1 = segment.start.stop.spider[0]
     , y1 = segment.start.stop.spider[1]
@@ -248,7 +291,7 @@ function interpolate(latlon, stops){
   return [x3,y3];
 }
 
-// Given a latlon, retrieve closest two stops 
+// Given a latlon, retrieve closest two stops
 function closest(coords, stops){
 
   var dists = stops.map(function(stop, i){
@@ -279,22 +322,22 @@ function distance(one, two){
      return this * Math.PI / 180;
   };
 
-  var lat1 = one[0], 
+  var lat1 = one[0],
     lon1 = one[1],
-    lat2 = two[0], 
-    lon2 = two[1]; 
+    lat2 = two[0],
+    lon2 = two[1];
 
-  var R = 6371; // km 
+  var R = 6371; // km
   //has a problem with the .toRad() method below.
   var x1 = lat2-lat1;
-  var dLat = x1.toRad();  
+  var dLat = x1.toRad();
   var x2 = lon2-lon1;
-  var dLon = x2.toRad();  
-  var a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
-                  Math.cos(lat1.toRad()) * Math.cos(lat2.toRad()) * 
-                  Math.sin(dLon/2) * Math.sin(dLon/2);  
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  var d = R * c; 
+  var dLon = x2.toRad();
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1.toRad()) * Math.cos(lat2.toRad()) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  var d = R * c;
 
   return d;
 }

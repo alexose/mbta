@@ -75,9 +75,9 @@ wss.on('connection', function connection(ws) {
 
   log.verbose('Websocket client connected.');
 
-  events.on('predictionsbyroute', send);
-  events.on('schedulebyroute', send);
-  events.on('vehiclesbyroute', send);
+  events.on('alerts', send);
+  events.on('trips', send);
+  events.on('vehicles', send);
 
   function send(json){
     try {
@@ -85,9 +85,9 @@ wss.on('connection', function connection(ws) {
     } catch(e){
       log.warn('Tried to update websocket, but failed.  Closing socket');
       ws.terminate();
-      events.removeListener('predictionsbyroute', send);
-      events.removeListener('schedulebyroute', send);
-      events.removeListener('vehiclesbyroute', send);
+      events.removeListener('alerts', send);
+      events.removeListener('trips', send);
+      events.removeListener('vehicles', send);
     }
   }
 });
