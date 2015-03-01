@@ -132,9 +132,9 @@ function segment(data){
   });
 
   return {
-    segments : segments,
-    stops : stops,
-    routes : data
+    segments: segments,
+    stops:    stops,
+    routes:   data
   };
 }
 
@@ -144,30 +144,28 @@ function poll(data, events){
   // It's better to just push updates down the wire than the entire list of vehicles.
   var vehicles = {};
 
-  go();
+  (function go(){
+    update(function(index){
 
-  function go(){
-    update(data, events, function(updated){
-
-
-      console.log(vehicles, updated);
-      var differences = compare(vehicles, updated);
+      var updated = parseVehicles(index, data)
+        , differences = compareVehicles(vehicles, updated);
 
       console.log(differences.enter.length, differences.exit.length, differences.update.length);
       vehicles = updated;
 
-      setTimeout(go, 1000 * 10);
+      setTimeout(go, 1000 * 20);
+      data.vehicles = vehicles;
     });
-  }
+  })();
 }
 
 // Find vehicle updates
-function compare(oldIndex, newIndex){
+function compareVehicles(oldIndex, newIndex){
 
   var differences = {
-    enter : [],
-    exit : [],
-    update : []
+    enter:  [],
+    exit:   [],
+    update: []
   };
 
   var id;
@@ -188,9 +186,22 @@ function compare(oldIndex, newIndex){
 
   // Update
   for (id in newIndex){
-    var old = oldIndex[id];
+    var old = oldIndex[id]
+      , noo = newIndex[id];
 
     if (old){
+
+      // See if we have a new stop_id
+      if (old.next && old.next !== noo.next){
+
+        // Yay! We can say for sure which segment it's on.
+        noo.last = old.next;
+      }
+
+      // If our timestamp has been updated, let's treat this like an update.
+      if (old.ts !== noo.ts){
+        differences.update.push(noo);
+      }
     }
   }
 
@@ -198,30 +209,39 @@ function compare(oldIndex, newIndex){
 }
 
 // Get vehicle locations via protobuf.
-function update(data, events, callback){
+function update(callback){
 
   var builder = ProtoBuf.loadProtoFile('gtfs-realtime.proto')
-    , transit = builder.build('transit_realtime');
+    , transit = builder.build('transit_realtime')
+    , index = {};
 
-  var feed = {
-     name : 'vehicles',
-     url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/VehiclePositions.pb'
-  };
+  var feeds = [
+    { name : 'trips',    url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/TripUpdates.pb' },
+    { name : 'vehicles', url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/VehiclePositions.pb' }
+  ];
 
-  fetch(feed.url, function(entities){
+  // Update each feed
+  feeds.forEach(function(feed){
+    fetch(feed.url, function(entities){
+      index[feed.name] = entities;
+      check();
+    });
+  });
 
-    var index = {};
+  // Check to see if we're done, and then run the parser.
+  function check(){
 
-    entities.forEach(function(d){
-      var id = d.vehicle.vehicle.id;
-
-      if (id){
-        index[id] = d.vehicle;
+    var finished = true;
+    feeds.forEach(function(feed){
+      if (!index[feed.name]){
+        finished = false;
       }
     });
 
-    callback(index);
-  });
+    if (finished){
+      callback(index);
+    }
+  }
 
   function fetch(url, cb){
     http.get(url, function(res){
@@ -248,17 +268,25 @@ function update(data, events, callback){
 }
 
 
-// Determine spider map coords of vehicles.
-// This is a little tricky.
-function parseVehicles(entities, data){
+// Munge vehicle and trip updates into something we can use to draw them on the spider map.
+// This is a little tricky.  My apologies, future readers.
+function parseVehicles(index, data){
 
-  var arr = []
-    , routes = _.indexBy(data.routes, 'route_id')
-    , trips = _.indexBy(index.trips, 'trip_id');
+  var arr      = []
+    , routes   = _.indexBy(data.routes, 'route_id')
+    , trips    = _.indexBy(index.trips, function(d){ return d.trip_update.trip.trip_id; })
+    , vehicles = _.indexBy(data.vehicles, 'vehicle_id');
+
+  // Reindex stops by name
+  var stops = _.chain(data.stops)
+    .values()
+    .indexBy('parent_station_name')
+    .value();
 
   index.vehicles.forEach(function(vehicle){
 
-    var v = vehicle.vehicle;
+    var v = vehicle.vehicle
+      , trip = trips[v.trip.trip_id];
 
     var obj = {
       geo : {
@@ -267,8 +295,29 @@ function parseVehicles(entities, data){
         bearing : v.position.bearing
       },
       id : v.vehicle.id,
-      ts : v.timestamp.low
+      ts : v.timestamp.low,
     };
+
+    var trip = trips[v.trip.trip_id] ? trips[v.trip.trip_id].trip_update : false;
+
+    if (trip){
+
+      var update = trip.stop_time_update;
+
+      if (update && update.length){
+        var stop = update.pop();
+
+        if (stop){
+
+          // Check to see if we have an arrival estimate
+          if (stop.arrival && stop.arrival.time){
+            obj.time = stop.arrival.time.low;
+          }
+
+          obj.next = stop.stop_id;
+        }
+      }
+    }
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
@@ -276,31 +325,8 @@ function parseVehicles(entities, data){
 
     var route = routes[v.trip.route_id];
 
-    //if (route){
-    //}
-
-
     arr.push(obj);
   });
-
-
-  /*
-  route.direction.forEach(function(direction, i){
-    direction.trip.forEach(function(trip){
-      var vehicle = trip.vehicle,
-
-
-        latlon = [
-          parseFloat(obj.geo.x, 10),
-          parseFloat(obj.geo.y, 10)
-        ];
-
-      obj.spider = interpolate(latlon, stopArr);
-
-      arr.push(obj);
-    });
-  });
-  */
 
   return arr;
 }
