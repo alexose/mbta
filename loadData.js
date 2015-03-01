@@ -142,13 +142,19 @@ function poll(data, events){
 
   // We keep an index of all vehicles so that we can easily track updates.
   // It's better to just push updates down the wire than the entire list of vehicles.
-  var vehicles = {};
+  var vehicles = data.vehicles || {};
+
+  // Index stops by parent_station_name.  We need to do this, because MBTA.
+  var stopIndex = _.chain(data.stops)
+      .values()
+      .indexBy('parent_station_name')
+      .value();
 
   (function go(){
     update(function(index){
 
       var updated = parseVehicles(index, data)
-        , differences = compareVehicles(vehicles, updated);
+        , differences = compareVehicles(vehicles, updated, stopIndex);
 
       console.log(differences.enter.length, differences.exit.length, differences.update.length);
       vehicles = updated;
@@ -160,7 +166,7 @@ function poll(data, events){
 }
 
 // Find vehicle updates
-function compareVehicles(oldIndex, newIndex){
+function compareVehicles(oldIndex, newIndex, stopIndex){
 
   var differences = {
     enter:  [],
@@ -195,7 +201,20 @@ function compareVehicles(oldIndex, newIndex){
       if (old.next && old.next !== noo.next){
 
         // Yay! We can say for sure which segment it's on.
-        noo.last = old.next;
+        var last = old.last || [];
+
+        noo.last = last.concat([old.next]);
+      }
+
+      if (noo.next && noo.last){
+
+        var origin = noo.last[noo.last.length-1]
+          , destination = noo.next;
+
+        var start = stopIndex[origin]
+          , end = stopIndex[destination];
+
+        console.log(origin, destination, start, end);
       }
 
       // If our timestamp has been updated, let's treat this like an update.
