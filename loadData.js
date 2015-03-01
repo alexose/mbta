@@ -140,58 +140,88 @@ function segment(data){
 
 function poll(data, events){
 
-  update(data, events);
+  // We keep an index of all vehicles so that we can easily track updates.
+  // It's better to just push updates down the wire than the entire list of vehicles.
+  var vehicles = {};
 
-  setInterval(function(){
-    update(data, events);
-  }, 1000 * 10);
+  go();
+
+  function go(){
+    update(data, events, function(updated){
+
+
+      console.log(vehicles, updated);
+      var differences = compare(vehicles, updated);
+
+      console.log(differences.enter.length, differences.exit.length, differences.update.length);
+      vehicles = updated;
+
+      setTimeout(go, 1000 * 10);
+    });
+  }
 }
 
-// Get prediction updates and vehicle locations via protobuf.
-function update(data, events){
+// Find vehicle updates
+function compare(oldIndex, newIndex){
+
+  var differences = {
+    enter : [],
+    exit : [],
+    update : []
+  };
+
+  var id;
+
+  // Enter
+  for (id in newIndex){
+    if (!oldIndex[id]){
+      differences.enter.push(id);
+    }
+  }
+
+  // Exit
+  for (id in oldIndex){
+    if (!newIndex[id]){
+      differences.exit.push(id);
+    }
+  }
+
+  // Update
+  for (id in newIndex){
+    var old = oldIndex[id];
+
+    if (old){
+    }
+  }
+
+  return differences;
+}
+
+// Get vehicle locations via protobuf.
+function update(data, events, callback){
 
   var builder = ProtoBuf.loadProtoFile('gtfs-realtime.proto')
-    , transit = builder.build('transit_realtime')
-    , index = {};
+    , transit = builder.build('transit_realtime');
 
-  var feeds = [
-    { name : 'alerts',   url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/Alerts.pb' },
-    { name : 'trips',    url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/TripUpdates.pb' },
-    { name : 'vehicles', url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/VehiclePositions.pb' }
-  ];
+  var feed = {
+     name : 'vehicles',
+     url : 'http://developer.mbta.com/lib/GTRTFS/Alerts/VehiclePositions.pb'
+  };
 
-  // Update each feed
-  feeds.forEach(function(feed){
-    fetch(feed.url, function(entities){
+  fetch(feed.url, function(entities){
 
-      index[feed.name] = entities;
+    var index = {};
 
-      check();
+    entities.forEach(function(d){
+      var id = d.vehicle.vehicle.id;
 
-    });
-  });
-
-  // Check to see if we're done, and then run the parser.
-  function check(){
-
-    var finished = true;
-    feeds.forEach(function(feed){
-      if (!index[feed.name]){
-        finished = false;
+      if (id){
+        index[id] = d.vehicle;
       }
     });
 
-    if (finished){
-      var vehicles = parseVehicles(index, data);
-
-      var json = JSON.stringify({
-          name : 'vehicles',
-          data : vehicles
-        });
-
-      events.emit('vehicles', json);
-    }
-  }
+    callback(index);
+  });
 
   function fetch(url, cb){
     http.get(url, function(res){
@@ -215,13 +245,12 @@ function update(data, events){
       });
     });
   }
-
 }
 
 
 // Determine spider map coords of vehicles.
 // This is a little tricky.
-function parseVehicles(index, data){
+function parseVehicles(entities, data){
 
   var arr = []
     , routes = _.indexBy(data.routes, 'route_id')
@@ -245,7 +274,7 @@ function parseVehicles(index, data){
       obj.plate = v.vehicle.license.plate;
     }
 
-    // var route = routes[vehicle.trip.route_id];
+    var route = routes[v.trip.route_id];
 
     //if (route){
     //}
