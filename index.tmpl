@@ -233,6 +233,8 @@ pubsub.subscribe('vehicles', function(e){
   // There's got to be a nice way to do this with lodash...
   var index = _.indexBy(vehicles, 'id');
 
+  console.log(e.data);
+
   e.data.forEach(function(vehicle){
 
     // Processs coordinates

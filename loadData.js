@@ -28,7 +28,8 @@ module.exports = function(_options, events, callback){
 
 function load(events, callback){
 
-  var routes = {};
+  var routes = {}
+    , trips = {};
 
   // Grab all routes
   get('routes/', {}, function(json){
@@ -54,8 +55,21 @@ function load(events, callback){
         // Get stops
         get('stopsbyroute', { route : id }, function(json){
           route.stops = parse(json);
-          setTimeout(stops.bind(this, index + 1), 1000);
+          check();
         });
+
+        // Get schedules
+        get('schedulebyroute', { route : id }, function(json){
+          route.schedules = parse(json);
+          check();
+        });
+
+        function check(){
+          if (route.stops && route.schedules){
+            setTimeout(stops.bind(this, index + 1), 1000);
+          }
+        }
+
 
       } else {
 
@@ -171,10 +185,11 @@ function update(data, events){
       var vehicles = parseVehicles(index, data);
 
       var json = JSON.stringify({
-          name : feed.name,
-          data : entities
+          name : 'vehicles',
+          data : vehicles
         });
-      events.emit(feed.name, json);
+
+      events.emit('vehicles', json);
     }
   }
 
@@ -209,7 +224,8 @@ function update(data, events){
 function parseVehicles(index, data){
 
   var arr = []
-    , routes = _.indexBy(data.routes, 'route_id');
+    , routes = _.indexBy(data.routes, 'route_id')
+    , trips = _.indexBy(index.trips, 'trip_id');
 
   index.vehicles.forEach(function(vehicle){
 
@@ -229,20 +245,10 @@ function parseVehicles(index, data){
       obj.plate = v.vehicle.license.plate;
     }
 
-    var route = routes[v.trip.route_id];
+    // var route = routes[vehicle.trip.route_id];
 
-    if (route){
-      var stopArr = route
-        .stops
-        .direction[0] // TODO: this is wrong
-        .stop
-        .map(function(d){
-          return data.stops[d.stop_id];
-        });
-
-      var latlon = [obj.geo.x, obj.geo.y];
-      obj.spider = interpolate(latlon, stopArr);
-    }
+    //if (route){
+    //}
 
 
     arr.push(obj);
