@@ -52,25 +52,32 @@ function load(events, callback){
 
         log.info('Loading subway routes... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
 
-        // Get stops
-        get('stopsbyroute', { route : id }, function(json){
-          route.stops = parse(json);
-          check();
-        });
+        var endpoints = [
+          { name : 'stops',       endpoint : 'stopsbyroute' },
+          { name : 'schedules',   endpoint : 'schedulebyroute' },
+          { name : 'predictions', endpoint : 'predictionsbyroute' },
+        ];
 
-        // Get schedules
-        get('schedulebyroute', { route : id }, function(json){
-          route.schedules = parse(json);
-          check();
+        endpoints.forEach(function(d){
+          get(d.endpoint, { route : id }, function(json){
+            route[d.name] = parse(json);
+            check();
+          });
         });
 
         function check(){
-          if (route.stops && route.schedules){
+
+          var finished = true;
+          endpoints.forEach(function(d){
+            if (typeof route[d.name] === 'undefined'){
+              finished = false;
+            }
+          });
+
+          if (finished){
             setTimeout(stops.bind(this, index + 1), 1000);
           }
         }
-
-
       } else {
 
         // Process main payload and save it
@@ -144,17 +151,42 @@ function poll(data, events){
   // It's better to just push updates down the wire than the entire list of vehicles.
   var vehicles = data.vehicles || {};
 
+  var indexes = {};
+
   // Index stops by parent_station_name.  We need to do this, because MBTA.
-  var stopIndex = _.chain(data.stops)
+  indexes.stops = _.chain(data.stops)
       .values()
       .indexBy('parent_station_name')
       .value();
 
+  // Index predictions by trip id
+  indexes.predictions = _.chain(data.routes)
+      .pluck('predictions')
+      .pluck('direction')
+      .flatten()
+      .pluck('trip')
+      .flatten()
+      .indexBy('trip_id')
+      .value();
+
+  // Index schedules by trip id
+  indexes.schedules = _.chain(data.routes)
+      .pluck('schedules')
+      .pluck('direction')
+      .flatten()
+      .pluck('trip')
+      .flatten()
+      .indexBy('trip_id')
+      .value();
+
+  // Index routes by route id
+  indexes.routes = _.indexBy(data.routes, 'route_id');
+
   (function go(){
     update(function(index){
 
-      var updated = parseVehicles(index, data)
-        , differences = compareVehicles(vehicles, updated, stopIndex);
+      var updated = parseVehicles(index, data, indexes)
+        , differences = compareVehicles(vehicles, updated);
 
       console.log(differences.enter.length, differences.exit.length, differences.update.length);
       vehicles = updated;
@@ -165,8 +197,83 @@ function poll(data, events){
   })();
 }
 
+// Munge vehicle and trip updates into something we can use to draw them on the spider map.
+// This is a little tricky.  My apologies, future readers.
+function parseVehicles(index, data, indexes){
+
+  var arr      = []
+    , trips    = _.indexBy(index.trips, function(d){ return d.trip_update.trip.trip_id; })
+    , vehicles = _.indexBy(data.vehicles, 'vehicle_id');
+
+  index.vehicles.forEach(function(vehicle){
+
+    var v = vehicle.vehicle
+      , trip = trips[v.trip.trip_id];
+
+    var obj = {
+      geo : {
+        x : v.position.latitude,
+        y : v.position.longitude,
+        bearing : v.position.bearing
+      },
+      id : v.vehicle.id,
+      ts : v.timestamp.low,
+    };
+
+    var trip = trips[v.trip.trip_id] ? trips[v.trip.trip_id].trip_update : false;
+
+    var tid = v.trip.trip_id
+      , trip = trips[tid]
+      , prediction = indexes.predictions[tid]
+      , schedule = indexes.schedules[tid];
+
+    if (trip && trip.trip_update){
+
+      if (prediction){
+        obj.prediction = prediction;
+      }
+
+      if (schedule){
+        console.log('hm');
+      } else {
+      }
+    }
+
+
+    if (trip){
+
+      var update = trip.stop_time_update;
+
+      if (update && update.length){
+        var stop = update.pop();
+
+        if (stop){
+
+          // Check to see if we have an arrival estimate
+          if (stop.arrival && stop.arrival.time){
+            obj.time = stop.arrival.time.low;
+          }
+
+          obj.next = stop.stop_id;
+        }
+      }
+    }
+
+    if (v.vehicle.license_plate){
+      obj.plate = v.vehicle.license.plate;
+    }
+
+    // var route = routes[v.trip.route_id];
+
+    arr.push(obj);
+  });
+
+  return arr;
+}
+
+
 // Find vehicle updates
-function compareVehicles(oldIndex, newIndex, stopIndex){
+function compareVehicles(oldIndex, newIndex, indexes){
 
   var differences = {
     enter:  [],
@@ -211,8 +318,8 @@ function compareVehicles(oldIndex, newIndex, stopIndex){
         var origin = noo.last[noo.last.length-1]
           , destination = noo.next;
 
-        var start = stopIndex[origin]
-          , end = stopIndex[destination];
+        var start = indexes.stops[origin]
+          , end = indexes.stops[destination];
 
         console.log(origin, destination, start, end);
       }
@@ -284,70 +391,6 @@ function update(callback){
       });
     });
   }
-}
-
-
-// Munge vehicle and trip updates into something we can use to draw them on the spider map.
-// This is a little tricky.  My apologies, future readers.
-function parseVehicles(index, data){
-
-  var arr      = []
-    , routes   = _.indexBy(data.routes, 'route_id')
-    , trips    = _.indexBy(index.trips, function(d){ return d.trip_update.trip.trip_id; })
-    , vehicles = _.indexBy(data.vehicles, 'vehicle_id');
-
-  // Reindex stops by name
-  var stops = _.chain(data.stops)
-    .values()
-    .indexBy('parent_station_name')
-    .value();
-
-  index.vehicles.forEach(function(vehicle){
-
-    var v = vehicle.vehicle
-      , trip = trips[v.trip.trip_id];
-
-    var obj = {
-      geo : {
-        x : v.position.latitude,
-        y : v.position.longitude,
-        bearing : v.position.bearing
-      },
-      id : v.vehicle.id,
-      ts : v.timestamp.low,
-    };
-
-    var trip = trips[v.trip.trip_id] ? trips[v.trip.trip_id].trip_update : false;
-
-    if (trip){
-
-      var update = trip.stop_time_update;
-
-      if (update && update.length){
-        var stop = update.pop();
-
-        if (stop){
-
-          // Check to see if we have an arrival estimate
-          if (stop.arrival && stop.arrival.time){
-            obj.time = stop.arrival.time.low;
-          }
-
-          obj.next = stop.stop_id;
-        }
-      }
-    }
-
-    if (v.vehicle.license_plate){
-      obj.plate = v.vehicle.license.plate;
-    }
-
-    var route = routes[v.trip.route_id];
-
-    arr.push(obj);
-  });
-
-  return arr;
 }
 
 // Figure out geo coordinates on spider map
