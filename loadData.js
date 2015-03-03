@@ -15,7 +15,7 @@ module.exports = function(_options, events, callback){
   // Try serving cached data first
   fs.readFile('cache.json', 'utf8', function(err, json){
     if (!err){
-      log.info('Loading cached subway data.');
+      log.info('Loading cached data.');
       callback(json);
 
       var data = JSON.parse(json);
@@ -37,7 +37,7 @@ function load(events, callback){
     var data = JSON.parse(json);
 
     var routes = _.chain(data.mode)
-      .filter({ mode_name : 'Subway' })
+      // .filter({ mode_name : 'Subway' })
       .pluck('route')
       .flatten()
       .value();
@@ -50,7 +50,7 @@ function load(events, callback){
 
         var id = route.route_id;
 
-        log.info('Loading subway routes... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
+        log.info('Loading routes... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
 
         var endpoints = [
           { name : 'stops',       endpoint : 'stopsbyroute' },
@@ -75,7 +75,7 @@ function load(events, callback){
           });
 
           if (finished){
-            setTimeout(stops.bind(this, index + 1), 1000);
+            setTimeout(stops.bind(this, index + 1), 100);
           }
         }
       } else {
@@ -188,7 +188,6 @@ function poll(data, events){
       var updated = parseVehicles(index, data, indexes)
         , differences = compareVehicles(vehicles, updated);
 
-      console.log(differences.enter.length, differences.exit.length, differences.update.length);
       vehicles = updated;
 
       setTimeout(go, 1000 * 20);
@@ -205,6 +204,8 @@ function parseVehicles(index, data, indexes){
     , trips    = _.indexBy(index.trips, function(d){ return d.trip_update.trip.trip_id; })
     , vehicles = _.indexBy(data.vehicles, 'vehicle_id');
 
+  var noSchedule = [];
+
   index.vehicles.forEach(function(vehicle){
 
     var v = vehicle.vehicle
@@ -220,53 +221,28 @@ function parseVehicles(index, data, indexes){
       ts : v.timestamp.low,
     };
 
-    var trip = trips[v.trip.trip_id] ? trips[v.trip.trip_id].trip_update : false;
-
     var tid = v.trip.trip_id
-      , trip = trips[tid]
       , prediction = indexes.predictions[tid]
       , schedule = indexes.schedules[tid];
 
-    if (trip && trip.trip_update){
-
-      if (prediction){
-        obj.prediction = prediction;
-      }
-
-      if (schedule){
-        console.log('hm');
-      } else {
-      }
+    if (prediction){
+      obj.prediction = prediction;
     }
 
-
-    if (trip){
-
-      var update = trip.stop_time_update;
-
-      if (update && update.length){
-        var stop = update.pop();
-
-        if (stop){
-
-          // Check to see if we have an arrival estimate
-          if (stop.arrival && stop.arrival.time){
-            obj.time = stop.arrival.time.low;
-          }
-
-          obj.next = stop.stop_id;
-        }
-      }
+    if (schedule){
+      obj.schedule = schedule;
+    } else {
+      noSchedule.push(tid);
     }
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
     }
 
-    // var route = routes[v.trip.route_id];
-
     arr.push(obj);
   });
+
+  console.log(arr.length + ' trips, ' + noData.length + ' without schedules.');
 
   return arr;
 }
