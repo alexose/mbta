@@ -43,7 +43,7 @@ function load(events, callback){
       .value();
 
     // Grab stops, schedules, and predictions per route
-    (function stops(index){
+    (function extraData(index){
       var route = routes[index];
 
       if (route){
@@ -75,17 +75,17 @@ function load(events, callback){
           });
 
           if (finished){
-            setTimeout(stops.bind(this, index + 1), 100);
+            setTimeout(extraData.bind(this, index + 1), 100);
           }
         }
       } else {
 
         // Process main payload and save it
-        var obj = segment(routes)
-          , string = JSON.stringify(obj);
+        var indexes = process(routes)
+          , string = JSON.stringify(indexes);
 
         // Begin polling vehicle and schedule data
-        poll(obj, events);
+        poll(indexes, events);
 
         save(string);
         callback(string);
@@ -94,14 +94,14 @@ function load(events, callback){
   });
 };
 
-// Produce a list of segments with which to draw the map
-function segment(data){
+// Produce a list of segments with which to draw the map.
+function process(routes){
 
   var segments = []
     , stops = {}
     , spider = require('./spider.js');
 
-  data.forEach(function(route){
+  routes.forEach(function(route){
     route.stops.direction.forEach(function(direction){
       direction.stop.forEach(function(stop, i){
 
@@ -124,6 +124,7 @@ function segment(data){
           parseFloat(stop.stop_lat, 10)
         ];
 
+        // Index stops by id while we're at it
         stops[stop.stop_id] = obj;
 
         var next = direction.stop[i + 1];
@@ -138,29 +139,8 @@ function segment(data){
     });
   });
 
-  return {
-    segments: segments,
-    stops:    stops,
-    routes:   data
-  };
-}
-
-function poll(data, events){
-
-  // We keep an index of all vehicles so that we can easily track updates.
-  // It's better to just push updates down the wire than the entire list of vehicles.
-  var vehicles = data.vehicles || {};
-
-  var indexes = {};
-
-  // Index stops by parent_station_name.  We need to do this, because MBTA.
-  indexes.stops = _.chain(data.stops)
-      .values()
-      .indexBy('parent_station_name')
-      .value();
-
   // Index predictions by trip id
-  indexes.predictions = _.chain(data.routes)
+  var predictions = _.chain(routes)
       .pluck('predictions')
       .pluck('direction')
       .flatten()
@@ -170,7 +150,7 @@ function poll(data, events){
       .value();
 
   // Index schedules by trip id
-  indexes.schedules = _.chain(data.routes)
+  var schedules = _.chain(routes)
       .pluck('schedules')
       .pluck('direction')
       .flatten()
@@ -179,16 +159,47 @@ function poll(data, events){
       .indexBy('trip_id')
       .value();
 
+  // Index stops by parent_station_name.  We need to do this, because MBTA.
+  var stopsByStation = _.chain(routes)
+      .pluck('stops')
+      .values()
+      .indexBy('parent_station_name')
+      .value();
+
   // Index routes by route id
-  indexes.routes = _.indexBy(data.routes, 'route_id');
+  var routesById = _.indexBy(routes, 'route_id');
+
+  return {
+    segments:       segments,
+    stops:          stops,
+    routes:         routes,
+    predictions:    predictions,
+    schedules:      schedules,
+    stopsByStation: stopsByStation,
+    routesById:     routesById
+  };
+}
+
+function poll(indexes, events){
+
+  // Build and maintain an index of vehicles
+  var vehicles = indexes.vehicles || {};
 
   (function go(){
-    update(function(index){
+    update(function(data){
 
-      var updated = parseVehicles(index, data, indexes)
-        , differences = compareVehicles(vehicles, updated);
+      // Data contains vehicles as well as predictions and alerts.  Let's handle prediction updates first:
+      indexes.predictions = parsePredictions(data.trips, indexes);
 
+      // Now let's update our vehicles:
+      var updated = parseVehicles(data.vehicles, indexes);
+
+      // Let's compare our new updates with what we had prior:
+      var differences = compareVehicles(vehicles, updated);
       vehicles = updated;
+
+      // And finally, alerts:
+
 
       setTimeout(go, 1000 * 20);
       data.vehicles = vehicles;
@@ -196,20 +207,27 @@ function poll(data, events){
   })();
 }
 
+// Update trips based on what we get from the .pb file
+function parsePredictions(trips, indexes){
+
+
+  return indexes.predictions
+}
+
 // Munge vehicle and trip updates into something we can use to draw them on the spider map.
 // This is a little tricky.  My apologies, future readers.
-function parseVehicles(index, data, indexes){
+function parseVehicles(vehicles, indexes){
 
   var arr      = []
-    , trips    = _.indexBy(index.trips, function(d){ return d.trip_update.trip.trip_id; })
-    , vehicles = _.indexBy(data.vehicles, 'vehicle_id');
+    , index = _.indexBy(vehicles, 'vehicle_id')
+    , noSchedule = []
+    , noPrediction = [];
 
   var noSchedule = [];
 
-  index.vehicles.forEach(function(vehicle){
+  vehicles.forEach(function(vehicle){
 
-    var v = vehicle.vehicle
-      , trip = trips[v.trip.trip_id];
+    var v = vehicle.vehicle;
 
     var obj = {
       geo : {
@@ -227,6 +245,8 @@ function parseVehicles(index, data, indexes){
 
     if (prediction){
       obj.prediction = prediction;
+    } else {
+      noPrediction.push(tid);
     }
 
     if (schedule){
@@ -242,7 +262,7 @@ function parseVehicles(index, data, indexes){
     arr.push(obj);
   });
 
-  console.log(arr.length + ' trips, ' + noData.length + ' without schedules.');
+  console.log(arr.length + ' trips, ' + noSchedule.length + ' without schedules, ' + noPrediction.length + ' without predictions.');
 
   return arr;
 }
