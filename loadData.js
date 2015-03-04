@@ -95,7 +95,7 @@ function load(events, callback){
   });
 };
 
-// Produce a list of segments with which to draw the map.
+// Produce a list of segments with which to draw the map.  Also build indexes.
 function process(routes){
 
   var segments = []
@@ -170,9 +170,6 @@ function process(routes){
   // Index routes by route id
   var routesById = _.indexBy(routes, 'route_id');
 
-  // Build and maintain an index of vehicles
-  var vehicles = indexes.vehicles || {};
-
   return {
     segments:       segments,
     stops:          stops,
@@ -180,7 +177,8 @@ function process(routes){
     predictions:    predictions,
     schedules:      schedules,
     stopsByStation: stopsByStation,
-    routesById:     routesById
+    routesById:     routesById,
+    vehicles:       {}
   };
 }
 
@@ -188,42 +186,77 @@ function process(routes){
 function poll(indexes, events){
 
   (function go(){
-    update(function(data){
 
-      indexes.predictions = parsePredictions(data.trips, indexes);
+    update(function(results){
 
-	  var updated = parseVehicles(data.vehicles, indexes);
+      var trips = results.trips
+        , vehicles = results.vehicles;
 
-      // Let's compare our new updates with what we had prior:
-      var differences = compareVehicles(vehicles, updated);
-      vehicles = updated;
+      // Merge trip updates with prediction index
+      processTrips(trips, indexes.predictions);
 
-      // And finally, alerts:
-
+      // Merge vehicle updates with vehicle index
+      processVehicles(vehicles, indexes);
 
       setTimeout(go, 1000 * 20);
-      data.vehicles = vehicles;
     });
   })();
 }
 
-// Update trips based on what we get from the .pb file
-function parsePredictions(trips, indexes){
+// Merge trip (aka prediction) updates into index
+function processTrips(trips, predictions){
 
+  trips.forEach(function(trip){
 
-  return indexes.predictions
+    var update = trip.trip_update
+      , id = update.trip.trip_id
+      , times = update.stop_time_update;
+
+    var prediction = predictions[id];
+
+    if (prediction){
+
+      // Update stop predictions
+      times.forEach(function(stop){
+        var sequence = stop.stop_sequence;
+
+        if (sequence){
+          var found = _.find(prediction.stop, { stop_sequence : sequence.toString() });
+
+          if (found){
+            found.arrival = stop.arrival;
+          } else {
+
+          }
+        } else {
+          log.verbose('Weird.  A trip update without a stop update?');
+        }
+      });
+
+    } else if (typeof prediction === 'undefined') {
+
+      log.verbose('Couldn\'t find a record of trip ' + id);
+    }
+  });
+}
+
+// Try to grab a trip prediction from the API.
+function fetchPrediction(id){
+
+}
+
+// Try to grab a trip schedule from the API.
+function fetchSchedule(id){
+
 }
 
 // Munge vehicle and trip updates into something we can use to draw them on the spider map.
 // This is a little tricky.  My apologies, future readers.
-function parseVehicles(vehicles, indexes){
+function processVehicles(vehicles, indexes){
 
-  var arr      = []
-    , index = _.indexBy(vehicles, 'vehicle_id')
-    , noSchedule = []
+  var arr          = []
+    , noSchedule   = []
     , noPrediction = [];
-
-  var noSchedule = [];
 
   vehicles.forEach(function(vehicle){
 
@@ -267,70 +300,7 @@ function parseVehicles(vehicles, indexes){
   return arr;
 }
 
-
-// Find vehicle updates
-function compareVehicles(oldIndex, newIndex, indexes){
-
-  var differences = {
-    enter:  [],
-    exit:   [],
-    update: []
-  };
-
-  var id;
-
-  // Enter
-  for (id in newIndex){
-    if (!oldIndex[id]){
-      differences.enter.push(id);
-    }
-  }
-
-  // Exit
-  for (id in oldIndex){
-    if (!newIndex[id]){
-      differences.exit.push(id);
-    }
-  }
-
-  // Update
-  for (id in newIndex){
-    var old = oldIndex[id]
-      , noo = newIndex[id];
-
-    if (old){
-
-      // See if we have a new stop_id
-      if (old.next && old.next !== noo.next){
-
-        // Yay! We can say for sure which segment it's on.
-        var last = old.last || [];
-
-        noo.last = last.concat([old.next]);
-      }
-
-      if (noo.next && noo.last){
-
-        var origin = noo.last[noo.last.length-1]
-          , destination = noo.next;
-
-        var start = indexes.stops[origin]
-          , end = indexes.stops[destination];
-
-        console.log(origin, destination, start, end);
-      }
-
-      // If our timestamp has been updated, let's treat this like an update.
-      if (old.ts !== noo.ts){
-        differences.update.push(noo);
-      }
-    }
-  }
-
-  return differences;
-}
-
-// Get vehicle locations via protobuf.
+// Get vehicle locations and trip updates via protobuf
 function update(callback){
 
   var builder = ProtoBuf.loadProtoFile('gtfs-realtime.proto')
@@ -389,8 +359,61 @@ function update(callback){
   }
 }
 
+// Determine spider map coords of vehicles.
+// This is a little tricky.
+function parseVehicles(index, data){
+
+  var arr = []
+    , routes = _.indexBy(data.routes, 'route_id')
+    , trips = _.indexBy(index.trips, 'trip_id');
+
+  index.vehicles.forEach(function(vehicle){
+
+    var v = vehicle.vehicle;
+
+    var obj = {
+      geo : {
+        x : v.position.latitude,
+        y : v.position.longitude,
+        bearing : v.position.bearing
+      },
+      id : v.vehicle.id,
+      ts : v.timestamp.low
+    };
+
+    if (v.vehicle.license_plate){
+      obj.plate = v.vehicle.license.plate;
+    }
+
+    // Because direction_id is null (thanks, MBTA!) we have to figure out which direction we're going.
+    // Fortunately, we have the position and the bearing.
+
+    var route = routes[v.trip.route_id];
+
+    if (route){
+
+      var stopArr = route
+         .stops
+         .direction[0] // FIXME: We're assuming the stops are the same in both directions.  Is this true?
+         .stop
+         .map(function(d){
+           return data.stops[d.stop_id];
+         });
+
+      var latlon = [obj.geo.x, obj.geo.y];
+
+      obj.spider = interpolate(latlon, obj.geo.bearing, stopArr);
+    }
+
+
+    arr.push(obj);
+  });
+
+  return arr;
+}
+
 // Figure out geo coordinates on spider map
-function interpolate(latlon, stops){
+function interpolate(latlon, vehicleBearing, stops){
 
   // Determine which two stops on route this point is between
   var segment = closest(latlon, stops)
@@ -403,11 +426,32 @@ function interpolate(latlon, stops){
     , x2 = segment.end.stop.spider[0]
     , y2 = segment.end.stop.spider[1];
 
+  // Based on the bearing, which direction do we think we're going?
+  // FIXME: This isn't perfect.  If a stop involves a 90 degree turn, it won't be right.
+  var segmentBearing = bearing(x1, y1, x2, y2);
+
+  if (segmentBearing - vehicleBearing);
+
+
   // Calculate vectors
   var x3 = x1 + (x2 - x1) * ratio
     , y3 = y1 + (y2 - y1) * ratio;
 
   return [x3,y3];
+}
+
+function bearing(lat1, lng1, lat2, lng2){
+
+  var dLon = (lng2-lng1);
+  var y = Math.sin(dLon) * Math.cos(lat2);
+  var x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+  var brng = toDeg(Math.atan2(y, x));
+
+  return 360 - ((brng + 360) % 360);
+}
+
+function toDeg(rad){
+  return rad * 180 / Math.PI;
 }
 
 // Given a latlon, retrieve closest two stops
