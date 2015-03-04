@@ -26,6 +26,7 @@ module.exports = function(_options, events, callback){
   });
 }
 
+// We begin by building indexes of all routes, predictions, and schedules
 function load(events, callback){
 
   var routes = {}
@@ -169,6 +170,9 @@ function process(routes){
   // Index routes by route id
   var routesById = _.indexBy(routes, 'route_id');
 
+  // Build and maintain an index of vehicles
+  var vehicles = indexes.vehicles || {};
+
   return {
     segments:       segments,
     stops:          stops,
@@ -180,19 +184,15 @@ function process(routes){
   };
 }
 
+// Now that we've established the main data set, we shall make continual updates to it.
 function poll(indexes, events){
-
-  // Build and maintain an index of vehicles
-  var vehicles = indexes.vehicles || {};
 
   (function go(){
     update(function(data){
 
-      // Data contains vehicles as well as predictions and alerts.  Let's handle prediction updates first:
       indexes.predictions = parsePredictions(data.trips, indexes);
 
-      // Now let's update our vehicles:
-      var updated = parseVehicles(data.vehicles, indexes);
+	  var updated = parseVehicles(data.vehicles, indexes);
 
       // Let's compare our new updates with what we had prior:
       var differences = compareVehicles(vehicles, updated);
