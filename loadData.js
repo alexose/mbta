@@ -292,7 +292,7 @@ function processVehicles(vehicles, indexes){
     arr.push(obj);
   });
 
-  log.info(arr.length + ' trips, ' + missing.schedules + ' without schedules, ' + missing.predictions + ' without predictions.');
+  log.info(arr.length + ' trips, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');
 
   return arr;
 }
@@ -301,6 +301,7 @@ function processVehicles(vehicles, indexes){
 function getTripInfo(type, trip, indexes, callback){
 
   var tid = trip.trip_id
+    , key = tid + type
     , index = indexes[type];
 
   var endpoints = {
@@ -308,25 +309,76 @@ function getTripInfo(type, trip, indexes, callback){
     schedules : 'schedulebytrip'
   }
 
-  // TODO: queue these requests
-  get(endpoints[type], {trip : tid}, function(json){
-    var obj = parse(json);
+  // Find trip id in queue.  If it's not in there, tack it on to the end.
+  var entry = _.find(queue, { key : key });
 
-    if (obj){
-      index[tid] = obj;
-      callback();
-    } else {
-      index[tid] = { response : json };
+  if (!entry){
+    queue.push({
+      key : key,
+      id : tid,
+      type : type,
+      trip : trip,
+      endpoint : endpoints[type],
+      params : { trip : tid },
+      callback : callback
+    });
 
-      var rid = trip.route_id
-        , route = indexes.routes[rid]
-        , rname = route.route_name;
+    if (queue.length === 1){
 
-      log.warn('Could not get ' + type + ' for ' + tid + ' (' + rname + ').');
-      callback();
+      // Start queue
+      startQueue(indexes);
     }
-  });
+  }
 }
+
+// Queue meant to limit getTripInfo API requests
+var queue = [];
+function startQueue(indexes){
+
+  (function go(){
+
+    if (!queue.length){
+      save(parse(indexes));
+      return;
+    }
+
+    var entry = queue[0]
+      , index = indexes[entry.type]
+      , id = entry.id;
+
+    get(entry.endpoint, entry.params, function(json){
+
+      queue.shift();
+
+      var obj = parse(json);
+
+      if (obj){
+        index[id] = obj;
+        entry.callback();
+      } else {
+        index[id] = { response : json };
+
+        var rid = entry.trip.route_id
+          , route = indexes.routes[rid];
+
+        if (route) {
+          log.warn('Could not get ' + entry.type + ' for ' + id + ' (' + route.route_name + ').');
+        } else{
+          log.warn('Route ' + rid + ' not found for ' + id + '.');
+        }
+
+        // Fire callback attached to entry
+        entry.callback();
+      }
+
+      // Continue queue
+      setTimeout(go, 100);
+      log.verbose(queue.length + ' requests in queue.');
+    });
+  })();
+
+}
+
 
 // Get vehicle locations and trip updates via protobuf
 function update(callback){
@@ -524,8 +576,8 @@ function distance(one, two){
   var x2 = lon2-lon1;
   var dLon = x2.toRad();
   var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1.toRad()) * Math.cos(lat2.toRad()) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
+          Math.cos(lat1.toRad()) * Math.cos(lat2.toRad()) *
+          Math.sin(dLon/2) * Math.sin(dLon/2);
   var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   var d = R * c;
 
@@ -570,8 +622,8 @@ function parse(json){
   }
 }
 
-function save(routes){
-  fs.writeFile('cache.json', routes, function(err) {
+function save(indexes){
+  fs.writeFile('cache.json', indexes, function(err) {
     if(err) {
       console.log(err);
     } else {
