@@ -44,14 +44,14 @@ function load(events, callback){
       .value();
 
     // Grab stops, schedules, and predictions per route
-    (function extraData(index){
-      var route = routes[index];
+    (function extraData(pos){
+      var route = routes[pos];
 
       if (route){
 
         var id = route.route_id;
 
-        log.info('Loading routes... (' + (index + 1) + ' of ' + (routes.length + 1) + ')');
+        log.info('Loading routes... (' + (pos + 1) + ' of ' + (routes.length + 1) + ')');
 
         var endpoints = [
           { name : 'stops',       endpoint : 'stopsbyroute' },
@@ -76,7 +76,7 @@ function load(events, callback){
           });
 
           if (finished){
-            setTimeout(extraData.bind(this, index + 1), 100);
+            setTimeout(extraData.bind(this, pos + 1), 100);
           }
         }
       } else {
@@ -268,7 +268,7 @@ function processVehicles(vehicles, indexes){
       }
     });
 
-    // Attempted to figure out coordinates on spider map
+    // Attempt to figure out coordinates on spider map
     if (schedule){
 
       // Find segment
@@ -345,7 +345,7 @@ function startQueue(indexes){
 
       var obj = parse(json)
         , rid = entry.trip.route_id
-        , route = indexes.routes[rid];
+        , route = _.find(indexes.routes, { route_id : rid });
 
       if (!route){
         index[id] = { response : json };
@@ -355,7 +355,7 @@ function startQueue(indexes){
         if (obj){
           index[id] = obj;
 
-          log.verbose('Now tracking the ' + obj.trip_name);
+          log.info('Now tracking the ' + obj.trip_name);
           entry.callback();
         } else {
           index[id] = { response : json };
