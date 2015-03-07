@@ -99,7 +99,6 @@ function load(events, callback){
 function process(routes){
 
   var segments = []
-    , stops = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route){
@@ -124,9 +123,6 @@ function process(routes){
           parseFloat(stop.stop_lon, 10),
           parseFloat(stop.stop_lat, 10)
         ];
-
-        // Index stops by id while we're at it
-        stops[stop.stop_id] = obj;
 
         var next = direction.stop[i + 1];
         if (next){
@@ -160,25 +156,12 @@ function process(routes){
       .indexBy('trip_id')
       .value();
 
-  // Index stops by parent_station_name.  We need to do this, because MBTA.
-  var stopsByStation = _.chain(routes)
-      .pluck('stops')
-      .values()
-      .indexBy('parent_station_name')
-      .value();
-
-  // Index routes by route id
-  var routesById = _.indexBy(routes, 'route_id');
-
   return {
-    segments:       segments,
-    stops:          stops,
-    routes:         routes,
-    predictions:    predictions,
-    schedules:      schedules,
-    stopsByStation: stopsByStation,
-    routesById:     routesById,
-    vehicles:       {}
+    routes:      routes,
+    segments:    segments,
+    predictions: predictions,
+    schedules:   schedules,
+    vehicles:    {}
   };
 }
 
@@ -198,7 +181,7 @@ function poll(indexes, events){
       // Merge vehicle updates with vehicle index
       processVehicles(vehicles, indexes);
 
-      setTimeout(go, 1000 * 20);
+      setTimeout(go, 1000 * 30);
     });
   })();
 }
@@ -225,11 +208,11 @@ function processTrips(trips, indexes){
 
           if (found){
             found.arrival = stop.arrival;
-          } else {
-
           }
         } else {
-          log.verbose('Weird.  A trip update without a stop update?');
+
+          // I think this is a trip that hasn't departed yet?
+          // TODO: update arrival and departure times?
         }
       });
 
@@ -309,7 +292,7 @@ function getTripInfo(type, trip, indexes, callback){
     schedules : 'schedulebytrip'
   }
 
-  // Find trip id in queue.  If it's not in there, tack it on to the end.
+  // See if this is already in the queue.  If not, add it.
   var entry = _.find(queue, { key : key });
 
   if (!entry){
@@ -338,7 +321,7 @@ function startQueue(indexes){
   (function go(){
 
     if (!queue.length){
-      save(parse(indexes));
+      save(JSON.stringify(indexes));
       return;
     }
 
@@ -625,13 +608,13 @@ function parse(json){
 function save(indexes){
   fs.writeFile('cache.json', indexes, function(err) {
     if(err) {
-      console.log(err);
+      log.error(err);
     } else {
-      console.log("The file was saved!");
+      log.info('Cache file saved.');
     }
   });
 }
 
 function p(json){
-  console.log(json, null, 2);
+  console.log(JSON.stringify(json, null, 2));
 }
