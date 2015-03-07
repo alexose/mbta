@@ -268,6 +268,16 @@ function processVehicles(vehicles, indexes){
       }
     });
 
+    // Attempted to figure out coordinates on spider map
+    if (schedule){
+
+      // Find segment
+      var start = v.stop_id;
+
+      // TODO: track previous stop
+      var seq = v.current_stop_sequence || 0;
+    }
+
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
     }
@@ -333,26 +343,28 @@ function startQueue(indexes){
 
       queue.shift();
 
-      var obj = parse(json);
+      var obj = parse(json)
+        , rid = entry.trip.route_id
+        , route = indexes.routes[rid];
 
-      if (obj){
-        index[id] = obj;
-        entry.callback();
-      } else {
+      if (!route){
         index[id] = { response : json };
+        log.warn('Route ' + rid + ' not found for ' + id + '.');
+      } else {
 
-        var rid = entry.trip.route_id
-          , route = indexes.routes[rid];
+        if (obj){
+          index[id] = obj;
 
-        if (route) {
+          log.verbose('Now tracking the ' + obj.trip_name);
+          entry.callback();
+        } else {
+          index[id] = { response : json };
           log.warn('Could not get ' + entry.type + ' for ' + id + ' (' + route.route_name + ').');
-        } else{
-          log.warn('Route ' + rid + ' not found for ' + id + '.');
         }
-
-        // Fire callback attached to entry
-        entry.callback();
       }
+
+      // Fire callback attached to entry
+      entry.callback();
 
       // Continue queue
       setTimeout(go, 100);
