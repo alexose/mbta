@@ -193,7 +193,7 @@ function poll(indexes, events){
         , vehicles = results.vehicles;
 
       // Merge trip updates with prediction index
-      processTrips(trips, indexes.predictions);
+      processTrips(trips, indexes);
 
       // Merge vehicle updates with vehicle index
       processVehicles(vehicles, indexes);
@@ -204,15 +204,15 @@ function poll(indexes, events){
 }
 
 // Merge trip (aka prediction) updates into index
-function processTrips(trips, predictions){
+function processTrips(trips, indexes){
 
-  trips.forEach(function(trip){
+  trips.forEach(function process(trip){
 
     var update = trip.trip_update
       , id = update.trip.trip_id
       , times = update.stop_time_update;
 
-    var prediction = predictions[id];
+    var prediction = indexes.predictions[id];
 
     if (prediction){
 
@@ -235,30 +235,20 @@ function processTrips(trips, predictions){
 
     } else if (typeof prediction === 'undefined') {
 
-      log.verbose('Couldn\'t find a record of trip ' + id);
+      getTripInfo('predictions', update.trip, indexes, process.bind(this, trip))
+      return;
     }
   });
-}
-
-// Try to grab a trip prediction from the API.
-function fetchPrediction(id){
-
-}
-
-// Try to grab a trip schedule from the API.
-function fetchSchedule(id){
-
 }
 
 // Munge vehicle and trip updates into something we can use to draw them on the spider map.
 // This is a little tricky.  My apologies, future readers.
 function processVehicles(vehicles, indexes){
 
-  var arr          = []
-    , noSchedule   = []
-    , noPrediction = [];
+  var arr = []
+    , missing = {}
 
-  vehicles.forEach(function(vehicle){
+  vehicles.forEach(function parse(vehicle){
 
     var v = vehicle.vehicle;
 
@@ -276,17 +266,24 @@ function processVehicles(vehicles, indexes){
       , prediction = indexes.predictions[tid]
       , schedule = indexes.schedules[tid];
 
-    if (prediction){
-      obj.prediction = prediction;
-    } else {
-      noPrediction.push(tid);
-    }
+    // Make sure we have predictions and schedules
+    ['predictions', 'schedules'].forEach(function(d){
 
-    if (schedule){
-      obj.schedule = schedule;
-    } else {
-      noSchedule.push(tid);
-    }
+      // First, see if it's already in the index.
+      if (indexes[d][tid]){
+        obj[d] = indexes[d][tid];
+      } else {
+
+        // Next, try to go get it from the API and re-parse
+        if (!missing[d]){
+          missing[d] = 0;
+        }
+        missing[d] += 1;
+
+        getTripInfo(d, v.trip, indexes, parse.bind(this, vehicle));
+        return;
+      }
+    });
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
@@ -295,9 +292,40 @@ function processVehicles(vehicles, indexes){
     arr.push(obj);
   });
 
-  console.log(arr.length + ' trips, ' + noSchedule.length + ' without schedules, ' + noPrediction.length + ' without predictions.');
+  log.info(arr.length + ' trips, ' + missing.schedules + ' without schedules, ' + missing.predictions + ' without predictions.');
 
   return arr;
+}
+
+// This is used to find schedules and predictions for vehicles that don't have them
+function getTripInfo(type, trip, indexes, callback){
+
+  var tid = trip.trip_id
+    , index = indexes[type];
+
+  var endpoints = {
+    predictions : 'predictionsbytrip',
+    schedules : 'schedulebytrip'
+  }
+
+  // TODO: queue these requests
+  get(endpoints[type], {trip : tid}, function(json){
+    var obj = parse(json);
+
+    if (obj){
+      index[tid] = obj;
+      callback();
+    } else {
+      index[tid] = { response : json };
+
+      var rid = trip.route_id
+        , route = indexes.routes[rid]
+        , rname = route.route_name;
+
+      log.warn('Could not get ' + type + ' for ' + tid + ' (' + rname + ').');
+      callback();
+    }
+  });
 }
 
 // Get vehicle locations and trip updates via protobuf
@@ -491,7 +519,6 @@ function distance(one, two){
     lon2 = two[1];
 
   var R = 6371; // km
-  //has a problem with the .toRad() method below.
   var x1 = lat2-lat1;
   var dLat = x1.toRad();
   var x2 = lon2-lon1;
@@ -551,4 +578,8 @@ function save(routes){
       console.log("The file was saved!");
     }
   });
+}
+
+function p(json){
+  console.log(json, null, 2);
 }
