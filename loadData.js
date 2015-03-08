@@ -99,6 +99,7 @@ function load(events, callback){
 function process(routes){
 
   var segments = []
+    , stops = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route){
@@ -123,6 +124,8 @@ function process(routes){
           parseFloat(stop.stop_lon, 10),
           parseFloat(stop.stop_lat, 10)
         ];
+
+        stops[stop.stop_id] = obj;
 
         var next = direction.stop[i + 1];
         if (next){
@@ -161,6 +164,7 @@ function process(routes){
     segments:    segments,
     predictions: predictions,
     schedules:   schedules,
+    stops:       stops,
     vehicles:    {}
   };
 }
@@ -234,12 +238,12 @@ function processTrips(trips, indexes){
 // This is a little tricky.  My apologies, future readers.
 function processVehicles(vehicles, indexes){
 
-  var arr = []
-    , missing = {}
+  var missing = {}
 
   vehicles.forEach(function parse(vehicle){
 
-    var v = vehicle.vehicle;
+    var v = vehicle.vehicle
+      , id = v.vehicle.id;
 
     // Ignore vehicles on routes we don't have
     var route = _.find(indexes.routes, { route_id : v.trip.route_id });
@@ -248,12 +252,12 @@ function processVehicles(vehicles, indexes){
     }
 
     var obj = {
-      geo : {
-        x : v.position.latitude,
-        y : v.position.longitude,
-        bearing : v.position.bearing
-      },
-      id : v.vehicle.id,
+      geo : [
+        v.position.latitude,
+        v.position.longitude,
+      ],
+      bearing : v.position.bearing,
+      id : id,
       ts : v.timestamp.low,
     };
 
@@ -281,25 +285,33 @@ function processVehicles(vehicles, indexes){
     });
 
     // Attempt to figure out coordinates on spider map
+    // TODO: track previous stop
     if (schedule){
 
       // Find segment
-      var start = v.stop_id;
+      var stop_sequence = v.current_stop_sequence || 1
+        , next = _.find(schedule.stop, { stop_sequence : stop_sequence.toString() })
+        , prev = _.find(schedule.stop, { stop_sequence : (stop_sequence - 1).toString() })
 
-      // TODO: track previous stop
-      var seq = v.current_stop_sequence || 0;
+      if (next && prev){
+
+        next = indexes.stops[next.stop_id];
+        prev = indexes.stops[prev.stop_id];
+
+        obj.spider = interpolate(obj.geo, [prev, next]);
+      } else {
+        // Assume the vehicle is sitting around at its origin, waiting to leave
+      }
     }
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
     }
 
-    arr.push(obj);
+    indexes.vehicles[id] = obj;
   });
 
-  log.info(arr.length + ' trips, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');
-
-  return arr;
+  log.info(_.keys(indexes.vehicles).length  + ' vehicles, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');
 }
 
 // This is used to find schedules and predictions for vehicles that don't have them
@@ -446,79 +458,24 @@ function update(callback){
   }
 }
 
-// Determine spider map coords of vehicles.
-// This is a little tricky.
-function parseVehicles(index, data){
-
-  var arr = []
-    , routes = _.indexBy(data.routes, 'route_id')
-    , trips = _.indexBy(index.trips, 'trip_id');
-
-  index.vehicles.forEach(function(vehicle){
-
-    var v = vehicle.vehicle;
-
-    var obj = {
-      geo : {
-        x : v.position.latitude,
-        y : v.position.longitude,
-        bearing : v.position.bearing
-      },
-      id : v.vehicle.id,
-      ts : v.timestamp.low
-    };
-
-    if (v.vehicle.license_plate){
-      obj.plate = v.vehicle.license.plate;
-    }
-
-    // Because direction_id is null (thanks, MBTA!) we have to figure out which direction we're going.
-    // Fortunately, we have the position and the bearing.
-
-    var route = routes[v.trip.route_id];
-
-    if (route){
-
-      var stopArr = route
-         .stops
-         .direction[0] // FIXME: We're assuming the stops are the same in both directions.  Is this true?
-         .stop
-         .map(function(d){
-           return data.stops[d.stop_id];
-         });
-
-      var latlon = [obj.geo.x, obj.geo.y];
-
-      obj.spider = interpolate(latlon, obj.geo.bearing, stopArr);
-    }
-
-
-    arr.push(obj);
-  });
-
-  return arr;
-}
-
 // Figure out geo coordinates on spider map
-function interpolate(latlon, vehicleBearing, stops){
+function interpolate(geo, segment){
+
+  // Calculate distance from each stop
+  var dist = {
+    next : distance(geo, segment[0].geo),
+    prev : distance(geo, segment[1].geo)
+  };
 
   // Determine which two stops on route this point is between
-  var segment = closest(latlon, stops)
-    , ratio = segment.start.distance / (segment.end.distance + segment.start.distance);
+  var ratio = dist.prev / (dist.next + dist.prev);
 
   // Based on the distance ratio, let's find how far we are between the
   // segment that connects start and end
-  var x1 = segment.start.stop.spider[0]
-    , y1 = segment.start.stop.spider[1]
-    , x2 = segment.end.stop.spider[0]
-    , y2 = segment.end.stop.spider[1];
-
-  // Based on the bearing, which direction do we think we're going?
-  // FIXME: This isn't perfect.  If a stop involves a 90 degree turn, it won't be right.
-  var segmentBearing = bearing(x1, y1, x2, y2);
-
-  if (segmentBearing - vehicleBearing);
-
+  var x1 = segment[0].spider[0]
+    , y1 = segment[0].spider[1]
+    , x2 = segment[1].spider[0]
+    , y2 = segment[1].spider[1];
 
   // Calculate vectors
   var x3 = x1 + (x2 - x1) * ratio
@@ -527,40 +484,8 @@ function interpolate(latlon, vehicleBearing, stops){
   return [x3,y3];
 }
 
-function bearing(lat1, lng1, lat2, lng2){
-
-  var dLon = (lng2-lng1);
-  var y = Math.sin(dLon) * Math.cos(lat2);
-  var x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
-  var brng = toDeg(Math.atan2(y, x));
-
-  return 360 - ((brng + 360) % 360);
-}
-
 function toDeg(rad){
   return rad * 180 / Math.PI;
-}
-
-// Given a latlon, retrieve closest two stops
-function closest(coords, stops){
-
-  var dists = stops.map(function(stop, i){
-    return {
-      stop : stop,
-      distance : distance(coords, stop.geo)
-    };
-  });
-
-  function sort(a, b){
-    return a.distance - b.distance;
-  }
-
-  var toptwo = dists.sort(sort).slice(0,2);
-
-  return {
-    start : toptwo[0],
-    end : toptwo[1]
-  };
 }
 
 // Determine distance between two coordinate pairs.
