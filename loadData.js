@@ -38,7 +38,7 @@ function load(events, callback){
     var data = JSON.parse(json);
 
     var routes = _.chain(data.mode)
-      // .filter({ mode_name : 'Subway' })
+      .filter({ mode_name : 'Subway' })
       .pluck('route')
       .flatten()
       .value();
@@ -195,6 +195,12 @@ function processTrips(trips, indexes){
       , id = update.trip.trip_id
       , times = update.stop_time_update;
 
+    // Ignore trips for routes we don't have
+    var route = _.find(indexes.routes, { route_id : update.trip.route_id });
+    if (!route){
+      return;
+    }
+
     var prediction = indexes.predictions[id];
 
     if (prediction){
@@ -234,6 +240,12 @@ function processVehicles(vehicles, indexes){
   vehicles.forEach(function parse(vehicle){
 
     var v = vehicle.vehicle;
+
+    // Ignore vehicles on routes we don't have
+    var route = _.find(indexes.routes, { route_id : v.trip.route_id });
+    if (!route){
+      return;
+    }
 
     var obj = {
       geo : {
