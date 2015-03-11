@@ -227,7 +227,7 @@ function update(time){
         .transition().duration(time)
           .attr('width', 1)
           .attr('height', 1)
-          .attr('x', function(d){ console.log(d); return d.x; })
+          .attr('x', function(d){ return d.x; })
           .attr('y', function(d){ return d.y; });
 }
 
@@ -245,30 +245,26 @@ ws.onmessage = function(message){
 
 pubsub.subscribe('vehicle', function(e){
 
-  // Merge vehicles with existing vehicles
-  // There's got to be a nice way to do this with lodash...
-  var index = _.indexBy(vehicles, 'id');
+  var vehicle = e.data;
 
-  console.log(e.data);
-
-  e.data.forEach(function(vehicle){
-
-    // Processs coordinates
+  // Processs coordinates
+  if (vehicle[coords]){
     vehicle.x = scale.x(vehicle[coords][0]);
     vehicle.y = scale.y(vehicle[coords][1]);
-
-    index[vehicle.id] = vehicle;
-  });
-
-  // Clear vehicles array
-  vehicles.slice(0, vehicles.length);
-
-  var newArr = _.map(index);
-  for (var i in newArr){
-    vehicles.push(newArr[i]);
+  } else {
+    vehicle.draw = false;
   }
 
-  update();
+  // Update vehicles array
+  var pos = _.findIndex(vehicles, { id : vehicle.id });
+
+  if (pos !== -1){
+    vehicles[pos] = vehicle;
+  } else {
+    vehicles.push(vehicle);
+  }
+
+  update(10000);
 });
 
 function parse(json){
