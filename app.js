@@ -77,7 +77,7 @@ wss.on('connection', function connection(ws) {
 
   events.on('alerts', send);
   events.on('trips', send);
-  events.on('vehicles', send);
+  events.on('vehicle', send);
 
   function send(json){
     try {
@@ -87,7 +87,7 @@ wss.on('connection', function connection(ws) {
       ws.terminate();
       events.removeListener('alerts', send);
       events.removeListener('trips', send);
-      events.removeListener('vehicles', send);
+      events.removeListener('vehicle', send);
     }
   }
 });

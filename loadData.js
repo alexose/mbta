@@ -5,12 +5,13 @@ var http = require('http')
   , fs = require('fs')
   , ProtoBuf = require('protobufjs');
 
-var options;
+var options, events;
 
 // Query everything we need to build the graph and begin doing realtime updates
-module.exports = function(_options, events, callback){
+module.exports = function(_options, _events, callback){
 
   options = _options;
+  events = _events;
 
   // Try serving cached data first
   fs.readFile('cache.json', 'utf8', function(err, json){
@@ -19,15 +20,15 @@ module.exports = function(_options, events, callback){
       callback(json);
 
       var data = JSON.parse(json);
-      setTimeout(poll.bind(this, data, events), 1000);
+      setTimeout(poll.bind(this, data), 1000);
     } else {
-      load(events, callback);
+      load(callback);
     }
   });
 }
 
 // We begin by building indexes of all routes and stops
-function load(events, callback){
+function load(callback){
 
   var routes = {}
     , trips = {};
@@ -64,7 +65,7 @@ function load(events, callback){
           , string = JSON.stringify(indexes);
 
         // Begin polling vehicle and schedule data
-        poll(indexes, events);
+        poll(indexes);
 
         save(string);
         callback(string);
@@ -129,7 +130,7 @@ function process(routes){
 }
 
 // Now that we've established the main data set, we shall make continual updates to it.
-function poll(indexes, events){
+function poll(indexes){
 
   (function go(){
 
@@ -260,6 +261,9 @@ function processVehicles(vehicles, indexes){
     }
 
     indexes.vehicles[id] = obj;
+
+    var str = JSON.stringify({ name : 'vehicle', data : obj });
+    events.emit('vehicle', str);
   });
 
   log.info(_.keys(indexes.vehicles).length  + ' vehicles, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');

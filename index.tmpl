@@ -62,6 +62,9 @@ var stations = _.chain(stops)
   .zipObject()
   .value()
 
+var segments = data.segments;
+
+var vehicles = _.values(data.vehicles);
 
 var svg = d3.selectAll('svg');
 
@@ -147,10 +150,6 @@ var coords, extent, scale, initialized;
 
 var dist = 1.4;
 
-var stops = _.values(index),
-  segments = data.segments,
-  vehicles = data.vehicles || [];
-
 init();
 function init(){
   coords = coords === 'spider' ? 'geo' : 'spider';
@@ -159,6 +158,12 @@ function init(){
 
   // Processs coordinates
   stops.forEach(function(d){
+    d.x = scale.x(d[coords][0]);
+    d.y = scale.y(d[coords][1]);
+  });
+
+  // Processs coordinates
+  vehicles.forEach(function(d){
     d.x = scale.x(d[coords][0]);
     d.y = scale.y(d[coords][1]);
   });
@@ -238,7 +243,7 @@ ws.onmessage = function(message){
   pubsub.publish(data.name, data.data);
 };
 
-pubsub.subscribe('vehicles', function(e){
+pubsub.subscribe('vehicle', function(e){
 
   // Merge vehicles with existing vehicles
   // There's got to be a nice way to do this with lodash...
