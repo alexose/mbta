@@ -26,7 +26,7 @@ module.exports = function(_options, events, callback){
   });
 }
 
-// We begin by building indexes of all routes
+// We begin by building indexes of all routes and stops
 function load(events, callback){
 
   var routes = {}
@@ -77,7 +77,6 @@ function load(events, callback){
 function process(routes){
 
   var segments = []
-    , stops = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route){
@@ -85,6 +84,8 @@ function process(routes){
       direction.stop.forEach(function(stop, i){
 
         var obj = {};
+
+        obj.id = stop.stop_id;
 
         // Denormalize route data
         obj.route_id = route.route_id;
@@ -103,8 +104,6 @@ function process(routes){
           parseFloat(stop.stop_lat, 10)
         ];
 
-        stops[stop.stop_id] = obj;
-
         var next = direction.stop[i + 1];
         if (next){
           segments.push({
@@ -113,15 +112,19 @@ function process(routes){
             direction : direction.direction_name
           });
         }
+
+        // Overwrite object
+        direction.stop[i] = obj;
       });
     });
   });
 
   return {
-    routes:   routes,
-    segments: segments,
-    stops:    stops,
-    vehicles: {}
+    routes:      routes,
+    segments:    segments,
+    predictions: {},
+    schedules:   {},
+    vehicles:    {}
   };
 }
 
@@ -241,23 +244,15 @@ function processVehicles(vehicles, indexes){
     });
 
     // Attempt to figure out coordinates on spider map
-    // TODO: track previous stop
     if (schedule){
 
-      // Find segment
-      var stop_sequence = v.current_stop_sequence || 1
-        , next = _.find(schedule.stop, { stop_sequence : stop_sequence.toString() })
-        , prev = _.find(schedule.stop, { stop_sequence : (stop_sequence - 1).toString() })
+      // Find segment based on distance
+      var stops = _.chain(route.stops.direction).pluck('stop').flatten().value()
+        , segment = closest(obj.geo, stops);
 
-      if (next && prev){
-
-        next = indexes.stops[next.stop_id];
-        prev = indexes.stops[prev.stop_id];
-
-        obj.spider = interpolate(obj.geo, [prev, next]);
-      } else {
-        // Assume the vehicle is sitting around at its origin, waiting to leave
-      }
+      obj.spider = interpolate(obj.geo, segment);
+    } else {
+      // Assume the vehicle is sitting around at its origin, waiting to leave
     }
 
     if (v.vehicle.license_plate){
@@ -268,6 +263,29 @@ function processVehicles(vehicles, indexes){
   });
 
   log.info(_.keys(indexes.vehicles).length  + ' vehicles, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');
+}
+
+// Given a latlon, retrieve closest two stops
+function closest(coords, stops){
+
+  var dists = stops.map(function(stop, i){
+
+    return {
+      stop : stop,
+      distance : distance(coords, stop.geo)
+    };
+  });
+
+  function sort(a, b){
+    return a.distance - b.distance;
+  }
+
+  var toptwo = dists.sort(sort).slice(0,2);
+
+  return [
+    toptwo[0].stop,
+    toptwo[1].stop
+  ];
 }
 
 // This is used to find schedules and predictions for vehicles that don't have them
@@ -347,7 +365,8 @@ function startQueue(indexes){
       entry.callback();
 
       // Continue queue
-      setTimeout(go, 100);
+      save(JSON.stringify(indexes));
+      setTimeout(go, 50);
       log.verbose(queue.length + ' requests in queue.');
     });
   })();

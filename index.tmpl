@@ -41,9 +41,17 @@
 
 var data = {{data}};
 
-var svg = d3.selectAll('svg');
+var stops = _.chain(data.routes)
+  .pluck('stops')
+  .pluck('direction')
+  .flatten()
+  .pluck('stop')
+  .flatten()
+  .value();
 
-var stations = _.chain(data.stops)
+var index = _.indexBy(stops, 'id');
+
+var stations = _.chain(stops)
   .map(function(d){
     var obj = {
       incoming : [],
@@ -53,6 +61,9 @@ var stations = _.chain(data.stops)
   })
   .zipObject()
   .value()
+
+
+var svg = d3.selectAll('svg');
 
 // Map colors
 var colors = {
@@ -64,7 +75,7 @@ var colors = {
 };
 
 function makeExtent(){
-  var arr = _.chain(data.stops)
+  var arr = _.chain(index)
     .pluck(coords)
     .value();
 
@@ -94,8 +105,8 @@ function makeGraph(){
 
   data.segments.forEach(function(d){
     var stop = {
-        start : data.stops[d.start],
-        end : data.stops[d.end]
+        start : index[d.start],
+        end : index[d.end]
       },
       route = stop.start.route_name,
       station = {
@@ -136,7 +147,7 @@ var coords, extent, scale, initialized;
 
 var dist = 1.4;
 
-var stops = _.values(data.stops),
+var stops = _.values(index),
   segments = data.segments,
   vehicles = data.vehicles || [];
 
@@ -381,8 +392,8 @@ function lineFunction(d) {
   var first;
 
   var stop = {
-    start : data.stops[d.start],
-    end : data.stops[d.end]
+    start : index[d.start],
+    end : index[d.end]
   };
 
   var station = {
