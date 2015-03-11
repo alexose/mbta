@@ -26,7 +26,7 @@ module.exports = function(_options, events, callback){
   });
 }
 
-// We begin by building indexes of all routes, predictions, and schedules
+// We begin by building indexes of all routes
 function load(events, callback){
 
   var routes = {}
@@ -43,42 +43,20 @@ function load(events, callback){
       .flatten()
       .value();
 
-    // Grab stops, schedules, and predictions per route
-    (function extraData(pos){
+    // Grab stops per route
+    (function getStops(pos){
       var route = routes[pos];
 
       if (route){
 
         var id = route.route_id;
 
-        log.info('Loading routes... (' + (pos + 1) + ' of ' + (routes.length + 1) + ')');
+        log.info('Loading stops for route ' + id + '... (' + (pos + 1) + ' of ' + (routes.length + 1) + ')');
 
-        var endpoints = [
-          { name : 'stops',       endpoint : 'stopsbyroute' },
-          { name : 'schedules',   endpoint : 'schedulebyroute' },
-          { name : 'predictions', endpoint : 'predictionsbyroute' },
-        ];
-
-        endpoints.forEach(function(d){
-          get(d.endpoint, { route : id }, function(json){
-            route[d.name] = parse(json);
-            check();
-          });
+        get('stopsbyroute', { route : id }, function(json){
+          route.stops = parse(json);
+          setTimeout(getStops.bind(this, pos + 1), 100);
         });
-
-        function check(){
-
-          var finished = true;
-          endpoints.forEach(function(d){
-            if (typeof route[d.name] === 'undefined'){
-              finished = false;
-            }
-          });
-
-          if (finished){
-            setTimeout(extraData.bind(this, pos + 1), 100);
-          }
-        }
       } else {
 
         // Process main payload and save it
@@ -139,33 +117,11 @@ function process(routes){
     });
   });
 
-  // Index predictions by trip id
-  var predictions = _.chain(routes)
-      .pluck('predictions')
-      .pluck('direction')
-      .flatten()
-      .pluck('trip')
-      .flatten()
-      .indexBy('trip_id')
-      .value();
-
-  // Index schedules by trip id
-  var schedules = _.chain(routes)
-      .pluck('schedules')
-      .pluck('direction')
-      .flatten()
-      .pluck('trip')
-      .flatten()
-      .indexBy('trip_id')
-      .value();
-
   return {
-    routes:      routes,
-    segments:    segments,
-    predictions: predictions,
-    schedules:   schedules,
-    stops:       stops,
-    vehicles:    {}
+    routes:   routes,
+    segments: segments,
+    stops:    stops,
+    vehicles: {}
   };
 }
 
