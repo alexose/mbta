@@ -8,7 +8,10 @@
 <body>
   <h1>MBTAVIZOMG</h1>
   <svg width="600" height="600" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet"></svg>
-  <script>var data = {{data}};</script>
+  <script>
+    var data = {{data}};
+    var ws = new WebSocket('{{socket}}');
+  </script>
   <!-- bower:js -->
   <script src="public/components/d3/d3.js"></script>
   <script src="public/components/lodash/lodash.js"></script>

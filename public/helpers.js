@@ -1,4 +1,7 @@
 // Adapted from https://github.com/mbtaviz/week/blob/gh-pages/main.js
+
+var dist = 1.4;
+
 function closestClockwise(line, lines) {
   var origAngle = angle(line.segment);
   lines = lines || [];
@@ -105,36 +108,3 @@ function length (a, b) {
   return Math.sqrt(Math.pow(b[1] - a[1], 2) + Math.pow(b[0] - a[0], 2));
 }
 
-function lineFunction(d) {
-  var p1 = d.segment[0];
-  var p2 = d.segment[1];
-  var offsets = offsetPoints(d);
-  var p3 = offsets[1];
-  var p4 = offsets[0];
-  var first;
-
-  var stop = {
-    start : index[d.start],
-    end : index[d.end]
-  };
-
-  var station = {
-    start : stations[stop.start.parent_station + stop.start.route_name],
-    end : stations[stop.end.parent_station + stop.end.route_name],
-  };
-
-  first = closestClockwise(d, station.end.outgoing);
-  if (first) {
-    var outgoingPoints = offsetPoints(first);
-    var newP3 = intersect(offsets, outgoingPoints);
-    if (newP3) { p3 = newP3; }
-  }
-  first = closestCounterClockwise(d, station.start.incoming);
-  if (first) {
-    var incomingPoints = offsetPoints(first);
-    var newP4 = intersect(offsets, incomingPoints);
-    if (newP4) { p4 = newP4; }
-  }
-
-  return lineMapping([p1, p2, p3, p4, p1]);
-}
