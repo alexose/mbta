@@ -14,18 +14,23 @@ init();
 function init(){
 
   // Process stops
-  var stops = _.chain(data.routes)
-    .pluck('stops')
-    .pluck('direction')
-    .flatten()
-    .pluck('stop')
-    .flatten()
-    .value();
+  var stops = []
+
+  data.routes.forEach(function(route){
+
+    var arr = _.chain(route.stops.direction).flatten().pluck('stop').flatten().value();
+
+    arr.forEach(function(d){
+      d.route_name = chop(route.route_name);
+    });
+
+    stops = stops.concat(arr);
+  });
 
   var coords = 'spider';
 
   // Create index
-  var index = _.indexBy(stops, 'id');
+  var index = _.indexBy(stops, 'stop_id');
 
   // Make scale and extent
   var extent = makeExtent(index, coords);
@@ -57,14 +62,15 @@ function init(){
     var stop = {
         start : index[d.start],
         end : index[d.end]
-      },
-      route = stop.start.route_name,
-      start = stop.start.parent_station,
-      end = stop.end.parent_station,
-      station = {
-        start : stations[start + route] || stations[start + chop(route)],
-        end : stations[end + route] || stations[end + chop(route)]
       };
+
+    var route = stop.start.route_name,
+        start = stop.start.parent_station,
+        end = stop.end.parent_station,
+        station = {
+          start : stations[start + route] || stations[start + chop(route)],
+          end : stations[end + route] || stations[end + chop(route)]
+        };
 
     d.name = 'From ' + stop.start.parent_station_name + ' to ' + stop.end.parent_station_name;
 

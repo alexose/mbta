@@ -374,7 +374,7 @@ function startQueue(indexes){
         log.warn('Route ' + rid + ' not found for ' + id + '.');
       } else {
 
-        if (obj){
+        if (obj && !obj.error){
           index[id] = obj;
 
           log.info('Now tracking the ' + obj.trip_name);
