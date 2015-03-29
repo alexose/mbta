@@ -79,6 +79,7 @@ wss.on('connection', function connection(ws) {
   events.on('vehicle', send);
 
   function send(json){
+
     try {
       ws.send(json);
     } catch(e){

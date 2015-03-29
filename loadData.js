@@ -34,7 +34,7 @@ function load(callback){
     , trips = {}
     // , whitelist = ["810_", "813_", "823_", "830_", "831_", "840_", "842_", "851_", "852_", "880_", "882_", "899_", "946_", "948_", "903_", "913_", "931_", "933_"];
     // whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
-    whitelist = ["Blue"];
+    whitelist = ["Green-B", "Green-C", "Green-D", "Green-E"];
 
   // Grab all routes
   get('routes/', {}, function(json){
@@ -215,9 +215,9 @@ function poll(indexes){
       // processTrips(trips, indexes);
 
       // Merge vehicle updates with vehicle index
-      // processVehicles(vehicles, indexes);
+      processVehicles(vehicles, indexes);
 
-      setTimeout(go, 1000 * 30);
+      setTimeout(go, 1000 * 10);
     });
   })();
 }
@@ -274,10 +274,14 @@ function processVehicles(vehicles, indexes){
 
   vehicles.forEach(function parse(vehicle){
 
-    console.log(vehicle);
-
     var v = vehicle.vehicle
       , id = v.vehicle.id;
+
+    var route = _.find(indexes.routes, { route_id : v.trip.route_id });
+    if (!route){
+      // Skip routes that we don't have
+      return;
+    }
 
     var obj = makeVehicle({
       geo : [
@@ -287,11 +291,13 @@ function processVehicles(vehicles, indexes){
       bearing : v.position.bearing,
       id : id,
       ts : v.timestamp.low,
-      route_name : route
+      route_name : route.route_name
     }, indexes);
 
     var str = JSON.stringify({ name : 'vehicle', data : obj });
     events.emit('vehicle', str);
+
+    indexes.vehicles[id] = obj;
   });
 
   log.info(_.keys(indexes.vehicles).length  + ' vehicles, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');

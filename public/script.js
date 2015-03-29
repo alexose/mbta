@@ -238,6 +238,12 @@ pubsub.subscribe('vehicle', function(e){
   var pos = _.findIndex(vehicles, { id : vehicle.id });
 
   if (pos !== -1){
+    var a = JSON.stringify(vehicles[pos]),
+        b = JSON.stringify(vehicle);
+
+    if (a != b){
+      console.log(vehicle.id + ' moved from ' + vehicles[pos].x + ',' + vehicles[pos].y + ' to ' + vehicle.x + ',' + vehicle.y );
+    }
     vehicles[pos] = vehicle;
   } else {
     vehicles.push(vehicle);
