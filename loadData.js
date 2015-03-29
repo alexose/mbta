@@ -34,7 +34,7 @@ function load(callback){
     , trips = {}
     // , whitelist = ["810_", "813_", "823_", "830_", "831_", "840_", "842_", "851_", "852_", "880_", "882_", "899_", "946_", "948_", "903_", "913_", "931_", "933_"];
     // whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
-    whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
+    whitelist = ["Blue"];
 
   // Grab all routes
   get('routes/', {}, function(json){
@@ -60,7 +60,7 @@ function load(callback){
 
         var id = route.route_id;
 
-        log.info('Loading stops for route ' + id + '... (' + (pos + 1) + ' of ' + (routes.length + 1) + ')');
+        log.info('Loading stops for route ' + id + '... (' + (pos + 1) + ' of ' + (routes.length) + ')');
 
         get('stopsbyroute', { route : id }, function(json){
           route.stops = parse(json);
@@ -171,14 +171,34 @@ function process(routes){
     });
   });
 
-  return {
+  var indexes = {
     routes:      routes,
     segments:    _.values(segments),
     stops:       index,
     predictions: {},
     schedules:   schedules,
-    vehicles:    vehicles
+    vehicles:    {}
   };
+
+  for (var id in vehicles){
+    var v = vehicles[id];
+
+    var obj = makeVehicle({
+      geo : [
+        parseFloat(v.vehicle.vehicle_lat, 10),
+        parseFloat(v.vehicle.vehicle_lon, 10)
+      ],
+      bearing : v.vehicle.vehicle_bearing,
+      id : id,
+      ts : v.vehicle.vehicle_timestamp,
+      trip_name : v.trip_name,
+      route_name : v.route_name
+    }, indexes);
+
+    indexes.vehicles[id] = obj;
+  }
+
+  return indexes;
 }
 
 // Now that we've established the main data set, we shall make continual updates to it.
@@ -192,10 +212,10 @@ function poll(indexes){
         , vehicles = results.vehicles;
 
       // Merge trip updates with prediction index
-      processTrips(trips, indexes);
+      // processTrips(trips, indexes);
 
       // Merge vehicle updates with vehicle index
-      processVehicles(vehicles, indexes);
+      // processVehicles(vehicles, indexes);
 
       setTimeout(go, 1000 * 30);
     });
@@ -254,16 +274,12 @@ function processVehicles(vehicles, indexes){
 
   vehicles.forEach(function parse(vehicle){
 
+    console.log(vehicle);
+
     var v = vehicle.vehicle
       , id = v.vehicle.id;
 
-    // Ignore vehicles on routes we don't have
-    var route = _.find(indexes.routes, { route_id : v.trip.route_id });
-    if (!route){
-      return;
-    }
-
-    var obj = {
+    var obj = makeVehicle({
       geo : [
         v.position.latitude,
         v.position.longitude,
@@ -271,36 +287,46 @@ function processVehicles(vehicles, indexes){
       bearing : v.position.bearing,
       id : id,
       ts : v.timestamp.low,
-    };
-
-    // TODO: improve this logic
-    var stops = _.chain(route.stops.direction).flatten().pluck('stop').flatten().value();
-
-    var toptwo = closest(obj.geo, stops)
-      , segment = [toptwo[0].stop, toptwo[1].stop];
-
-    obj.spider = interpolate(obj.geo, segment);
-
-    var start = segment[0].parent_station_name
-      , end = segment[1].parent_station_name;
-
-    if (start == end){
-      obj.current = 'idling at ' + start;
-    } else {
-      obj.current = 'between ' + start + ' and ' + end;
-    }
-
-    if (v.vehicle.license_plate){
-      obj.plate = v.vehicle.license.plate;
-    }
-
-    // indexes.vehicles[id] = obj;
+      route_name : route
+    }, indexes);
 
     var str = JSON.stringify({ name : 'vehicle', data : obj });
     events.emit('vehicle', str);
   });
 
   log.info(_.keys(indexes.vehicles).length  + ' vehicles, ' + (missing.schedules || 0) + ' without schedules, ' + (missing.predictions || 0) + ' without predictions.');
+}
+
+function makeVehicle(obj, indexes){
+
+  // Ignore vehicles on routes we don't have
+  var route = _.find(indexes.routes, { route_name : obj.route_name });
+  if (!route){
+    log.warn('No route for vehicle ' + obj.id);
+    return false;
+  }
+
+  // TODO: improve this logic
+  var stops = _.chain(route.stops.direction).flatten().pluck('stop').flatten().value();
+
+  // Dedupe
+  stops = _.uniq(stops, function(d){ return d.parent_station; });
+
+  var toptwo = closest(obj.geo, stops)
+    , segment = [toptwo[0].stop, toptwo[1].stop];
+
+  obj.spider = interpolate(obj.geo, segment);
+
+  var start = segment[0].parent_station_name
+    , end = segment[1].parent_station_name;
+
+  if (start == end){
+    obj.current = 'idling at ' + start;
+  } else {
+    obj.current = 'between ' + start + ' and ' + end;
+  }
+
+  return obj;
 }
 
 // Given a latlon, retrieve closest two stops
