@@ -63,8 +63,19 @@ function load(callback){
 
         get('stopsbyroute', { route : id }, function(json){
           route.stops = parse(json);
-          setTimeout(getStops.bind(this, pos + 1), 100);
+          check();
         });
+
+        get('schedulebyroute', { route : id }, function(json){
+          route.schedules = parse(json);
+          check();
+        });
+
+        function check(){
+          if (route.stops && route.schedules){
+            setTimeout(getStops.bind(this, pos + 1), 100);
+          }
+        }
       } else {
 
         // Process main payload and save it
@@ -87,43 +98,45 @@ function process(routes){
   var segments = []
     , spider = require('./spider.js');
 
-  routes.forEach(function(route){
-    route.stops.direction.forEach(function(direction){
-      direction.stop.forEach(function(stop, i){
+  routes.forEach(function(route, i){
+    var name = route.route_name
+      , id = route.route_id;
 
-        var obj = {};
+    // Use trips to determine segments
+    var trips = _.chain(route.schedules.direction).pluck('trip').flatten().value();
 
-        obj.id = stop.stop_id;
+    trips.forEach(function(trip){
+      trip.stop.forEach(function(stop, i){
 
-        // Denormalize route data
-        obj.route_id = route.route_id;
-        obj.route_name = route.route_name;
+        // Find the next stop in the sequence
+        var next = trip.stop[i + 1];
 
-        // Provide simplified coordinates
-        obj.spider = spider[stop.parent_station];
-
-        // Metadata
-        obj.parent_station_name = stop.parent_station_name;
-        obj.parent_station = stop.parent_station;
-
-        // Move geo coords
-        obj.geo = [
-          parseFloat(stop.stop_lon, 10),
-          parseFloat(stop.stop_lat, 10)
-        ];
-
-        var next = direction.stop[i + 1];
         if (next){
           segments.push({
             start : stop.stop_id,
             end : next.stop_id,
-            direction : direction.direction_name
+            route: id
           });
         }
-
-        // Overwrite object
-        direction.stop[i] = obj;
       });
+    });
+
+    // Fix stop coordinates
+    var stops = _.chain(route.stops.direction).pluck('stop').flatten().value();
+
+    stops.forEach(function(stop){
+
+        // Provide simplified coordinates
+        stop.spider = spider[stop.parent_station];
+
+        // Move geo coords
+        stop.geo = [
+          parseFloat(stop.stop_lon, 10),
+          parseFloat(stop.stop_lat, 10)
+        ];
+
+        delete stop.stop_lon;
+        delete stop.stop_lat;
     });
   });
 
