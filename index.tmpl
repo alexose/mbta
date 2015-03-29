@@ -9,8 +9,8 @@
   <h1>MBTAVIZOMG</h1>
   <svg width="600" height="600" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet"></svg>
   <!-- bower:js -->
-  <script src="bower_components/d3/d3.js"></script>
-  <script src="bower_components/lodash/lodash.js"></script>
+  <script src="public/components/d3/d3.js"></script>
+  <script src="public/components/lodash/lodash.js"></script>
   <!-- endbower -->
   <script>
 
@@ -122,10 +122,13 @@ function makeGraph(){
       [stop.end.x, stop.end.y]
     ];
 
-    d.color = colors[stop.start.route_name];
+    d.color = colors[stop.start.route_name] || '#333';
 
-    station.start.outgoing.push(d);
-    station.end.incoming.push(d);
+    if (station.start){
+      station.start.outgoing.push(d);
+    } if (station.end){
+      station.end.incoming.push(d);
+    }
   });
 }
 
@@ -164,8 +167,10 @@ function init(){
 
   // Processs coordinates
   vehicles.forEach(function(d){
-    d.x = scale.x(d[coords][0]);
-    d.y = scale.y(d[coords][1]);
+    if (d[coords]){
+      d.x = scale.x(d[coords][0]);
+      d.y = scale.y(d[coords][1]);
+    }
   });
 
   makeGraph();

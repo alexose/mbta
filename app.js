@@ -8,7 +8,7 @@ log.enableColor();
 log.level = 'verbose';
 
 var options
-  , dir = 'bower_components';
+  , dir = 'public';
 
 try {
   options = require('./config/config.js');
