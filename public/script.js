@@ -244,7 +244,8 @@ pubsub.subscribe('vehicle', function(e){
     if (a != b){
       console.log(vehicle.id + ' moved from ' + vehicles[pos].x + ',' + vehicles[pos].y + ' to ' + vehicle.x + ',' + vehicle.y );
     }
-    vehicles[pos] = vehicle;
+    vehicles[pos].x = vehicle.x;
+    vehicles[pos].y = vehicle.y;
   } else {
     vehicles.push(vehicle);
   }

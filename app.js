@@ -3,6 +3,9 @@ var http = require('http')
   , fs   = require('fs')
   , events = new (require('events').EventEmitter)();
 
+var load = require('./load.js')
+  , poll = require('./poll.js');
+
 log.enableColor();
 log.level = 'verbose';
 
@@ -20,11 +23,26 @@ try {
 var static = require('node-static');
 var file = new static.Server('./' + dir);
 
-// Get data
-require('./loadData.js')(options, events, listen);
+// Try serving cached data first
+fs.readFile('cache.json', 'utf8', function(err, json){
+  if (!err){
+    log.info('Loading cached data.');
+    var data = JSON.parse(json);
+    listen(data);
+  } else {
+    load(function(data){
+      log.info('Saving cache.');
+      save(JSON.stringify(data));
+      listen(data);
+    });
+  }
+});
 
 // Set up HTTP server
 function listen(data){
+
+  // Begin updating
+  poll(events, data);
 
   http
     .createServer(function(request, response){
@@ -37,7 +55,7 @@ function listen(data){
 
           // Embed important data on load
           var html = tmpl
-            .replace('{{data}}', data)
+            .replace('{{data}}', JSON.stringify(data))
             .replace('{{socket}}', 'ws://localhost:' + options.socket)
             .replace('{{port}}', options.port);
 
@@ -74,20 +92,20 @@ wss.on('connection', function connection(ws) {
 
   log.verbose('Websocket client connected.');
 
-  events.on('alerts', send);
-  events.on('trips', send);
-  events.on('vehicle', send);
+  events.on('alerts', update);
+  events.on('trips', update);
+  events.on('vehicle', update);
 
-  function send(json){
-
+  function update(data){
     try {
-      ws.send(json);
+      var str = JSON.stringify(data);
+      ws.send(str);
     } catch(e){
       log.warn('Tried to update websocket, but failed.  Closing socket');
       ws.terminate();
-      events.removeListener('alerts', send);
-      events.removeListener('trips', send);
-      events.removeListener('vehicle', send);
+      events.removeListener('alerts', update);
+      events.removeListener('trips', update);
+      events.removeListener('vehicle', update);
     }
   }
 });
@@ -103,4 +121,9 @@ function respond(response, string, code, type){
   });
   response.write(string + '\n');
   response.end();
+}
+
+function save(data){
+  var result = fs.writeFileSync('cache.json', data);
+  log.info('Cache file saved.');
 }
