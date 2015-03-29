@@ -63,6 +63,7 @@ function offsetPoints(d) {
   var angle90 = lineAngle + Math.PI / 2;
   var p3 = [p2[0] + dist * Math.cos(angle90), p2[1] + dist * Math.sin(angle90)];
   var p4 = [p1[0] + dist * Math.cos(angle90), p1[1] + dist * Math.sin(angle90)];
+
   return [p4, p3];
 }
 

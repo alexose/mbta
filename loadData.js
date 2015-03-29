@@ -95,7 +95,7 @@ function load(callback){
 // Produce a list of segments with which to draw the map.  Also build indexes.
 function process(routes){
 
-  var segments = []
+  var segments = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route, i){
@@ -112,11 +112,14 @@ function process(routes){
         var next = trip.stop[i + 1];
 
         if (next){
-          segments.push({
-            start : stop.stop_id,
-            end : next.stop_id,
+          var start = stop.stop_id
+            , end = next.stop_id;
+
+          segments[start + '-' + end] = {
+            start : start,
+            end : end,
             route: id
-          });
+          };
         }
       });
     });
@@ -142,7 +145,7 @@ function process(routes){
 
   return {
     routes:      routes,
-    segments:    segments,
+    segments:    _.values(segments),
     predictions: {},
     schedules:   {},
     vehicles:    {}
