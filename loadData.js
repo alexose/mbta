@@ -33,6 +33,7 @@ function load(callback){
   var routes = {}
     , trips = {}
     // , whitelist = ["810_", "813_", "823_", "830_", "831_", "840_", "842_", "851_", "852_", "880_", "882_", "899_", "946_", "948_", "903_", "913_", "931_", "933_"];
+    // whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
     whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
 
   // Grab all routes
@@ -71,8 +72,13 @@ function load(callback){
           check();
         });
 
+        get('vehiclesbyroute', { route : id }, function(json){
+          route.vehicles = parse(json);
+          check();
+        });
+
         function check(){
-          if (route.stops && route.schedules){
+          if (route.stops && route.schedules && route.vehicles){
             setTimeout(getStops.bind(this, pos + 1), 100);
           }
         }
@@ -98,6 +104,7 @@ function process(routes){
   var segments = {}
     , index = {}
     , schedules = {}
+    , vehicles = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route, i){
@@ -105,9 +112,7 @@ function process(routes){
       , id = route.route_id;
 
     // Use trips to determine segments
-    var trips = _.chain(route.schedules.direction).pluck('trip').flatten().value();
-
-    trips.forEach(function(trip){
+    _.chain(route.schedules.direction).pluck('trip').flatten().value().forEach(function(trip){
 
       schedules[trip.trip_id] = trip;
 
@@ -129,6 +134,20 @@ function process(routes){
         }
       });
     });
+
+    // Index vehicles
+    if (route.vehicles.direction){
+      route.vehicles.direction.forEach(function(direction, i){
+        direction.trip.forEach(function(trip){
+          var id = trip.vehicle.vehicle_id;
+
+          trip.direction_id = direction.direction_id;
+          trip.route_name = route.route_name;
+
+          vehicles[id] = trip;
+        });
+      });
+    }
 
     // Fix stop coordinates
     var stops = _.chain(route.stops.direction).pluck('stop').flatten().value();
@@ -158,7 +177,7 @@ function process(routes){
     stops:       index,
     predictions: {},
     schedules:   schedules,
-    vehicles:    {}
+    vehicles:    vehicles
   };
 }
 
@@ -221,7 +240,7 @@ function processTrips(trips, indexes){
 
     } else if (typeof prediction === 'undefined') {
 
-      getTripInfo('predictions', update.trip, indexes, process.bind(this, trip))
+      // getTripInfo('predictions', update.trip, indexes, process.bind(this, trip))
       return;
     }
   });
@@ -254,65 +273,28 @@ function processVehicles(vehicles, indexes){
       ts : v.timestamp.low,
     };
 
-    var tid = v.trip.trip_id
-      , prediction = indexes.predictions[tid]
-      , schedule = indexes.schedules[tid];
+    // TODO: improve this logic
+    var stops = _.chain(route.stops.direction).flatten().pluck('stop').flatten().value();
 
-    // Make sure we have predictions and schedules
-    ['predictions', 'schedules'].forEach(function(d){
+    var toptwo = closest(obj.geo, stops)
+      , segment = [toptwo[0].stop, toptwo[1].stop];
 
-      // First, see if it's already in the index.
-      if (indexes[d][tid]){
-        obj[d] = indexes[d][tid];
-      } else {
+    obj.spider = interpolate(obj.geo, segment);
 
-        // Next, try to go get it from the API and re-parse
-        if (!missing[d]){
-          missing[d] = 0;
-        }
-        missing[d] += 1;
+    var start = segment[0].parent_station_name
+      , end = segment[1].parent_station_name;
 
-        console.log(vehicle);
-        getTripInfo(d, v.trip, indexes, parse.bind(this, vehicle));
-        return;
-      }
-    });
-
-    // Attempt to figure out coordinates on spider map
-
-    // Look up segments by trip
-    var segments = indexes.segments
-
-    /*
-    // First, get all remaining stops on this trip
-    var ids = _.chain(schedule.stop).pluck('stop_id').flatten().value()
-      , stops = ids.map(function(id){ return indexes.stops[id]; });
-
-    if (stops.length > 1){
-      var toptwo = closest(obj.geo, stops)
-        , segment = [toptwo[0].stop, toptwo[1].stop];
-
-      obj.spider = interpolate(obj.geo, segment);
-
-      var start = segment[0].parent_station_name
-        , end = segment[1].parent_station_name;
-
-      if (start == end){
-        obj.current = 'idling at ' + start;
-      } else {
-        obj.current = 'between ' + start + ' and ' + end;
-      }
+    if (start == end){
+      obj.current = 'idling at ' + start;
     } else {
-      console.log(ids);
+      obj.current = 'between ' + start + ' and ' + end;
     }
-    */
-
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
     }
 
-    indexes.vehicles[id] = obj;
+    // indexes.vehicles[id] = obj;
 
     var str = JSON.stringify({ name : 'vehicle', data : obj });
     events.emit('vehicle', str);

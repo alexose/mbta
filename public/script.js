@@ -89,11 +89,7 @@ function init(){
   });
 
   // Process vehicles
-  vehicles = _.values(data.vehicles).filter(function(d){
-
-    // Return true if there is no error response
-    return (d.schedules && !d.schedules.response);
-  });
+  vehicles = _.values(data.vehicles);
 
   vehicles.forEach(function(d){
     if (d[coords]){
@@ -175,7 +171,7 @@ function draw(stops, segments, vehicles){
     .data(vehicles)
     .enter()
       .append('rect')
-        .each(function(d){ console.log('Tracking the ' + d.schedules.trip_name + ', currently at ' + d.current )})
+        .each(function(d){ console.log('Tracking the ' + d.trip_name); })
         .on('mouseover', function(d){
           console.log(d);
         })
