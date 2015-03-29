@@ -96,6 +96,8 @@ function load(callback){
 function process(routes){
 
   var segments = {}
+    , index = {}
+    , schedules = {}
     , spider = require('./spider.js');
 
   routes.forEach(function(route, i){
@@ -106,6 +108,9 @@ function process(routes){
     var trips = _.chain(route.schedules.direction).pluck('trip').flatten().value();
 
     trips.forEach(function(trip){
+
+      schedules[trip.trip_id] = trip;
+
       trip.stop.forEach(function(stop, i){
 
         // Find the next stop in the sequence
@@ -118,7 +123,8 @@ function process(routes){
           segments[start + '-' + end] = {
             start : start,
             end : end,
-            route: id
+            route: id,
+            trip: trip.trip_id
           };
         }
       });
@@ -134,20 +140,24 @@ function process(routes){
 
         // Move geo coords
         stop.geo = [
-          parseFloat(stop.stop_lon, 10),
-          parseFloat(stop.stop_lat, 10)
+          parseFloat(stop.stop_lat, 10),
+          parseFloat(stop.stop_lon, 10)
         ];
 
-        delete stop.stop_lon;
         delete stop.stop_lat;
+        delete stop.stop_lon;
+
+        // Add to stop index.  This is needed for lookups elsewhere.
+        index[stop.stop_id] = stop;
     });
   });
 
   return {
     routes:      routes,
     segments:    _.values(segments),
+    stops:       index,
     predictions: {},
-    schedules:   {},
+    schedules:   schedules,
     vehicles:    {}
   };
 }
@@ -262,17 +272,24 @@ function processVehicles(vehicles, indexes){
         }
         missing[d] += 1;
 
+        console.log(vehicle);
         getTripInfo(d, v.trip, indexes, parse.bind(this, vehicle));
         return;
       }
     });
 
     // Attempt to figure out coordinates on spider map
-    if (schedule){
 
-      // Find segment based on distance
-      var stops = _.chain(route.stops.direction).pluck('stop').flatten().value()
-        , toptwo = closest(obj.geo, stops)
+    // Look up segments by trip
+    var segments = indexes.segments
+
+    /*
+    // First, get all remaining stops on this trip
+    var ids = _.chain(schedule.stop).pluck('stop_id').flatten().value()
+      , stops = ids.map(function(id){ return indexes.stops[id]; });
+
+    if (stops.length > 1){
+      var toptwo = closest(obj.geo, stops)
         , segment = [toptwo[0].stop, toptwo[1].stop];
 
       obj.spider = interpolate(obj.geo, segment);
@@ -286,8 +303,10 @@ function processVehicles(vehicles, indexes){
         obj.current = 'between ' + start + ' and ' + end;
       }
     } else {
-      // Assume the vehicle is sitting around at its origin, waiting to leave
+      console.log(ids);
     }
+    */
+
 
     if (v.vehicle.license_plate){
       obj.plate = v.vehicle.license.plate;
@@ -399,6 +418,8 @@ function startQueue(indexes){
       entry.callback();
 
       // Continue queue
+      indexes[entry.type] = index;
+
       save(JSON.stringify(indexes));
       setTimeout(go, 50);
       log.verbose(queue.length + ' requests in queue.');
@@ -472,8 +493,8 @@ function interpolate(geo, segment){
 
   // Calculate distance from each stop
   var dist = {
-    next : distance(geo, segment[0].geo.reverse()),
-    prev : distance(geo, segment[1].geo.reverse())
+    next : distance(geo, segment[0].geo),
+    prev : distance(geo, segment[1].geo)
   };
 
   // Determine which two stops on route this point is between
