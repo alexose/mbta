@@ -31,7 +31,9 @@ module.exports = function(_options, _events, callback){
 function load(callback){
 
   var routes = {}
-    , trips = {};
+    , trips = {}
+    // , whitelist = ["810_", "813_", "823_", "830_", "831_", "840_", "842_", "851_", "852_", "880_", "882_", "899_", "946_", "948_", "903_", "913_", "931_", "933_"];
+    whitelist = ["Green-B", "Green-C", "Green-D", "Green-E", "Mattapan", "Blue", "Orange", "Red"];
 
   // Grab all routes
   get('routes/', {}, function(json){
@@ -39,9 +41,14 @@ function load(callback){
     var data = JSON.parse(json);
 
     var routes = _.chain(data.mode)
-      .filter({ mode_name : 'Subway' })
+      .filter(function(d){
+        return d.mode_name === 'Subway';
+      })
       .pluck('route')
       .flatten()
+      .filter(function(d){
+        return whitelist.indexOf(d.route_id) !== -1;
+      })
       .value();
 
     // Grab stops per route

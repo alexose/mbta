@@ -81,6 +81,7 @@ function intersect(line1, line2) {
   var b1 = intercept(line1);
   var m2 = slope(line2);
   var b2 = intercept(line2);
+
   var m1Infinite = m1 === Infinity || m1 === -Infinity;
   var m2Infinite = m2 === Infinity || m2 === -Infinity;
   var x, y;
@@ -96,7 +97,7 @@ function intersect(line1, line2) {
     y = m1 * x + b1;
     return [x, y];
   } else {
-    // return null;
+    return null;
     // x = (b2 - b1) / (m1 - m2)
     x = (b2 - b1) / (m1 - m2);
     y = m1 * x + b1;

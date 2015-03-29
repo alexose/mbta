@@ -34,7 +34,7 @@ function init(){
   stops.forEach(function(d){
     d.x = scale.x(d[coords][0]);
     d.y = scale.y(d[coords][1]);
-    d.color = colors[d.route_name];
+    d.color = colors[chop(d.route_name)];
   });
 
   // Process stations
@@ -44,7 +44,9 @@ function init(){
         incoming : [],
         outgoing : []
       }
-      return [ d.parent_station + d.route_name, obj ]
+      var route = d.route_name;
+
+      return [ d.parent_station + route, obj ]
     })
     .zipObject()
     .value()
@@ -57,23 +59,24 @@ function init(){
         end : index[d.end]
       },
       route = stop.start.route_name,
+      start = stop.start.parent_station,
+      end = stop.end.parent_station,
       station = {
-        start : stations[stop.start.parent_station + route],
-        end : stations[stop.end.parent_station + route]
+        start : stations[start + route] || stations[start + chop(route)],
+        end : stations[end + route] || stations[end + chop(route)]
       };
+
+    d.name = 'From ' + stop.start.parent_station_name + ' to ' + stop.end.parent_station_name;
 
     d.segment = [
       [stop.start.x, stop.start.y],
       [stop.end.x, stop.end.y]
     ];
 
-    d.color = colors[stop.start.route_name] || '#333';
+    d.color = colors[chop(route)] || '#333';
 
-    if (station.start){
-      station.start.outgoing.push(d);
-    } if (station.end){
-      station.end.incoming.push(d);
-    }
+    station.start.outgoing.push(d);
+    station.end.incoming.push(d);
   });
 
   // Process vehicles
@@ -148,6 +151,9 @@ function draw(stops, segments, vehicles){
     .data(segments)
     .enter()
       .append('path')
+        .on('mouseover', function(d){
+          console.log(d.name);
+        })
         .style('fill', function(d){ return d.color; })
         .style('stroke', 'black')
         .style('stroke-width', 0.1);
@@ -269,5 +275,14 @@ function lineFunction(index, stations, d){
     .x(function(d) { return d[0]; })
     .y(function(d) { return d[1]; })
     .interpolate("linear")([p1, p2, p3, p4, p1]);
+}
+
+// Quick hack to handle green line issues
+function chop(name){
+  if (name.indexOf('Green Line') === -1){
+    return name;
+  } else {
+    return 'Green Line';
+  }
 }
 
