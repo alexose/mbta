@@ -1,5 +1,10 @@
 var initialized = false;
 
+var coords = 'spider',
+    scale,
+    extent,
+    vehicles;
+
 var colors = {
   'Green Line':       'rgb(51, 160, 44)',
   'Red Line':         'rgb(227, 26, 28)',
@@ -27,14 +32,12 @@ function init(){
     stops = stops.concat(arr);
   });
 
-  var coords = 'spider';
-
   // Create index
   var index = _.indexBy(stops, 'stop_id');
 
   // Make scale and extent
-  var extent = makeExtent(index, coords);
-  var scale = makeScale(extent);
+  extent = makeExtent(index);
+  scale = makeScale(extent);
 
   stops.forEach(function(d){
     d.x = scale.x(d[coords][0]);
@@ -86,7 +89,11 @@ function init(){
   });
 
   // Process vehicles
-  var vehicles = _.values(data.vehicles);
+  vehicles = _.values(data.vehicles).filter(function(d){
+
+    // Return true if there is no error response
+    return (d.schedules && !d.schedules.response);
+  });
 
   vehicles.forEach(function(d){
     if (d[coords]){
@@ -103,7 +110,7 @@ function init(){
   draw(stops, segments, vehicles);
 }
 
-function makeExtent(index, coords){
+function makeExtent(index){
   var arr = _.chain(index)
     .pluck(coords)
     .value();
@@ -164,12 +171,20 @@ function draw(stops, segments, vehicles){
         .style('stroke', 'black')
         .style('stroke-width', 0.1);
 
+  rects
+    .data(vehicles)
+    .enter()
+      .append('rect')
+        .each(function(d){ console.log('Tracking the ' + d.schedules.trip_name + ', currently at ' + d.current )})
+        .on('mouseover', function(d){
+          console.log(d);
+        })
+
   update(0);
 
   function mouseover(stop){
     console.log(stop.parent_station_name, stop);
   }
-
 }
 
 // Transition-based update
@@ -194,14 +209,11 @@ function update(time){
       .attr('d', lineFunction);
 
   rects
-    .data(vehicles)
-    .enter()
-      .append('rect')
-        .transition().duration(time)
-          .attr('width', 1)
-          .attr('height', 1)
-          .attr('x', function(d){ return d.x; })
-          .attr('y', function(d){ return d.y; });
+    .transition().duration(time)
+      .attr('width', 1)
+      .attr('height', 1)
+      .attr('x', function(d){ return d.x; })
+      .attr('y', function(d){ return d.y; });
 }
 
 // Set up socket

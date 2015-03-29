@@ -272,9 +272,19 @@ function processVehicles(vehicles, indexes){
 
       // Find segment based on distance
       var stops = _.chain(route.stops.direction).pluck('stop').flatten().value()
-        , segment = closest(obj.geo, stops);
+        , toptwo = closest(obj.geo, stops)
+        , segment = [toptwo[0].stop, toptwo[1].stop];
 
       obj.spider = interpolate(obj.geo, segment);
+
+      var start = segment[0].parent_station_name
+        , end = segment[1].parent_station_name;
+
+      if (start == end){
+        obj.current = 'idling at ' + start;
+      } else {
+        obj.current = 'between ' + start + ' and ' + end;
+      }
     } else {
       // Assume the vehicle is sitting around at its origin, waiting to leave
     }
@@ -309,10 +319,7 @@ function closest(coords, stops){
 
   var toptwo = dists.sort(sort).slice(0,2);
 
-  return [
-    toptwo[0].stop,
-    toptwo[1].stop
-  ];
+  return toptwo;
 }
 
 // This is used to find schedules and predictions for vehicles that don't have them
@@ -465,8 +472,8 @@ function interpolate(geo, segment){
 
   // Calculate distance from each stop
   var dist = {
-    next : distance(geo, segment[0].geo),
-    prev : distance(geo, segment[1].geo)
+    next : distance(geo, segment[0].geo.reverse()),
+    prev : distance(geo, segment[1].geo.reverse())
   };
 
   // Determine which two stops on route this point is between

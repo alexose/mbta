@@ -98,7 +98,6 @@ function intersect(line1, line2) {
     y = m1 * x + b1;
     return [x, y];
   } else {
-    return null;
     // x = (b2 - b1) / (m1 - m2)
     x = (b2 - b1) / (m1 - m2);
     y = m1 * x + b1;

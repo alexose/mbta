@@ -1,4 +1,3 @@
-// MBTA viz
 var http = require('http')
   , log  = require('npmlog')
   , fs   = require('fs')
